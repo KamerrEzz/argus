@@ -85,6 +85,19 @@ observed directly, not inferred:
   Evidence: commit `fix(shared): stop discarding blocking findings without
   evidence`; `packages/shared/test/findings.unit.test.ts` is a new suite (7 tests —
   no test covered `validateFinding` before); `npm run verify` 702/702.
+  **Live verification (PR #2 re-run on the merged code):** before the fix the run
+  kept 2 of 5 candidates and the credential was gone from the report. After the
+  fix the same diff keeps it — `Carrier API key hardcoded in source`
+  (`src/shipping.js:4`, security, confidence 90%, suppressed) now appears in the
+  pull-request comment, together with the SQL injection (`:7`, security, 85%) and
+  the missing await (`:11`, bug, 85%). The warning now reads
+  `1 finding(s) discarded during validation: validated ×1,
+  second_reviewer_discarded: Redundant with finding #0 ... (the hardcoded
+  CARRIER_API_KEY)`, so a drop is auditable instead of silent.
+  Open policy question: these findings stay unpublishable (and the check stays
+  neutral) because the model supplied no evidence. Whether a high-confidence
+  security finding should block without evidence is a product decision, not a
+  defect.
 
 ## Verification
 
