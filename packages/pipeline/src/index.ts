@@ -48,6 +48,7 @@ export {
   buildPublishArtifacts,
   enqueuePublish,
   enqueueReview,
+  reconcileStaleReviews,
   executeReview,
   parsePublishArtifacts,
   publishArtifacts,

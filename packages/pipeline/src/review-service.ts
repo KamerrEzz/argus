@@ -14,6 +14,7 @@ import {
   type ReviewVerdict,
 } from '@acr/shared';
 import { z } from 'zod';
+import { listStaleQueuedRuns } from '@acr/database';
 import { runReviewGraph, type ReviewOutcome } from '@acr/ai';
 import { CHECK_RUN_NAME } from '@acr/github';
 import { QUEUES, type ProcessReviewJob, type PublishReviewJob } from '@acr/queue';
@@ -200,6 +201,18 @@ export async function requestReview(
   };
 }
 
+/**
+ * Deterministic job ids. BullMQ job ids must not contain `:`, and a stable id
+ * is what lets the queue reconciler ask whether a QUEUED run still has a job.
+ */
+export function reviewJobId(reviewRunId: string): string {
+  return `review-${reviewRunId}`;
+}
+
+export function publishJobId(reviewRunId: string): string {
+  return `publish-${reviewRunId}`;
+}
+
 /** Push the run onto the queue, or report `null` when this process runs inline. */
 export async function enqueueReview(
   container: ApplicationContainer,
@@ -211,7 +224,7 @@ export async function enqueueReview(
   const dispatched = await container.queue.dispatch<ProcessReviewJob>(
     QUEUES.processReview,
     job,
-    { deduplicationId: `process-review:${job.reviewRunId}` },
+    { jobId: reviewJobId(job.reviewRunId) },
   );
   return dispatched.jobId;
 }
@@ -224,9 +237,71 @@ export async function enqueuePublish(
     return null;
   }
   const dispatched = await container.queue.dispatch<PublishReviewJob>(QUEUES.publishReview, job, {
-    deduplicationId: `publish-review:${job.reviewRunId}`,
+    jobId: publishJobId(job.reviewRunId),
   });
   return dispatched.jobId;
+}
+
+/** A QUEUED run older than this has lost the job that was meant to move it. */
+export const STALE_QUEUED_MS = 5 * 60_000;
+
+export interface ReconcileOutcome {
+  readonly scanned: number;
+  readonly requeued: number;
+  readonly alive: number;
+}
+
+/**
+ * A run row can sit in QUEUED with no BullMQ job behind it — the dispatch threw,
+ * or Redis was replaced while the row survived. Nothing else notices, so the
+ * dashboard counts it as pending work forever and it never runs. On worker start
+ * we look for those and re-dispatch only the ones that truly have no live job,
+ * so a healthy backlog is never doubled.
+ */
+export async function reconcileStaleReviews(
+  container: ApplicationContainer,
+  options: { readonly olderThanMs?: number; readonly now?: Date; readonly limit?: number } = {},
+): Promise<ReconcileOutcome> {
+  const { queue, logger } = container;
+  if (queue === null) {
+    return { scanned: 0, requeued: 0, alive: 0 };
+  }
+  const now = options.now ?? new Date();
+  const olderThan = new Date(now.getTime() - (options.olderThanMs ?? STALE_QUEUED_MS));
+  const stale = await listStaleQueuedRuns(container.prisma, {
+    olderThan,
+    limit: options.limit ?? 100,
+  });
+
+  let requeued = 0;
+  let alive = 0;
+  for (const run of stale) {
+    if (await queue.hasLiveJob(QUEUES.processReview, reviewJobId(run.reviewRunId))) {
+      alive += 1;
+      continue;
+    }
+    const jobId = await enqueueReview(container, {
+      reviewRunId: run.reviewRunId,
+      trigger: run.trigger,
+      requestedBy: 'queue-reconciler',
+    });
+    if (jobId === null) {
+      logger.warn({ reviewRunId: run.reviewRunId }, 'queued review could not be re-dispatched');
+      continue;
+    }
+    requeued += 1;
+    logger.warn(
+      { reviewRunId: run.reviewRunId, jobId },
+      'queued review had no live job; re-dispatched',
+    );
+  }
+  if (requeued > 0) {
+    logger.warn(
+      { requeued, scanned: stale.length },
+      're-dispatched reviews that had lost their queue job',
+    );
+  }
+  return { scanned: stale.length, requeued, alive };
 }
 
 /**

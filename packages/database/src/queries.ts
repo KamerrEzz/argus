@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { parseRepositorySettings, type RepositorySettings } from '@acr/shared';
+import { parseRepositorySettings, type RepositorySettings, type ReviewTrigger } from '@acr/shared';
 import {
   fromDbCategory,
   fromDbCommandKind,
@@ -822,4 +822,27 @@ export async function listWebhookEvents(
     take: filter.take,
     skip: filter.skip,
   };
+}
+
+export interface StaleQueuedRun {
+  readonly reviewRunId: string;
+  readonly trigger: ReviewTrigger;
+}
+
+/**
+ * Runs still marked QUEUED once the cutoff has passed. Their job is no longer in
+ * the queue (the dispatch failed, or Redis was replaced while the row survived),
+ * so nothing will ever move them unless they are dispatched again.
+ */
+export async function listStaleQueuedRuns(
+  prisma: PrismaClient,
+  options: { readonly olderThan: Date; readonly limit: number },
+): Promise<readonly StaleQueuedRun[]> {
+  const rows = await prisma.reviewRun.findMany({
+    where: { status: 'QUEUED', createdAt: { lt: options.olderThan } },
+    orderBy: { createdAt: 'asc' },
+    take: options.limit,
+    select: { id: true, trigger: true },
+  });
+  return rows.map((row) => ({ reviewRunId: row.id, trigger: fromDbTrigger(row.trigger) }));
 }

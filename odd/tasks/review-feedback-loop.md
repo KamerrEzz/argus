@@ -46,11 +46,15 @@ observed directly, not inferred:
   Evidence: commit `fix(pipeline): report review progress across runs`; 4 new
   markdown tests; `npm run verify` 685/685.
 
-- [ ] **T2 — No run stays orphaned in QUEUED.**
+- [x] **T2 — No run stays orphaned in QUEUED.**
   Reconcile runs whose row is `QUEUED` past a threshold with no job in the queue,
   re-enqueueing them once. Acceptance: a `QUEUED` run older than the threshold is
   dispatched on worker start; a healthy run is untouched. Tests: pipeline/queue
-  unit tests. Evidence: commit.
+  unit tests. Evidence: commit `fix(pipeline): reconcile reviews that lost their
+  queue job`; 3 reconciler tests; two dispatches with the same jobId verified to
+  leave one job against real Redis; `npm run verify` 688/688.
+  Supporting fix: `deduplicationId` is not a BullMQ option (BullMQ reads
+  `deduplication.id`), so review jobs were never actually deduplicated.
 
 - [ ] **T3 — Inline findings actually publish.**
   Add an inline review-comment capability to the publish port/client and wire it

@@ -38,6 +38,7 @@ export {
   listRepositories,
   listReviewFindings,
   listReviewRuns,
+  listStaleQueuedRuns,
   listWebhookEvents,
   type FindingFilter,
   type Page,
@@ -46,6 +47,7 @@ export {
   type RepositoryFilter,
   type RepositoryListItem,
   type ReviewFilter,
+  type StaleQueuedRun,
 } from './queries';
 export { seedDatabase, type SeedOptions, type SeedSummary } from './seed';
 export {

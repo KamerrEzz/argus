@@ -83,6 +83,8 @@ const JOB_SCHEMAS: Record<QueueName, ZodType> = {
 };
 
 export interface DispatchOptions {
+  /** Deterministic id, so the same job can be looked up and never doubled. */
+  readonly jobId?: string;
   readonly deduplicationId?: string;
   readonly delayMs?: number;
   readonly attempts?: number;
@@ -156,7 +158,12 @@ export class QueueClient {
     }
 
     const job = await this.queue(name).add(name, parsed.data, {
-      ...(options.deduplicationId === undefined ? {} : { deduplicationId: options.deduplicationId }),
+      ...(options.jobId === undefined ? {} : { jobId: options.jobId }),
+      // BullMQ reads `deduplication.id`. `deduplicationId` is not a JobsOptions
+      // field it understands, so passing it silently disabled deduplication.
+      ...(options.deduplicationId === undefined
+        ? {}
+        : { deduplication: { id: options.deduplicationId } }),
       ...(options.delayMs === undefined ? {} : { delay: options.delayMs }),
       ...(options.attempts === undefined ? {} : { attempts: options.attempts }),
     });
@@ -166,6 +173,25 @@ export class QueueClient {
       return { jobId: null, deduplicated: true };
     }
     return { jobId: job.id, deduplicated: false };
+  }
+
+  /**
+   * True while a job with that id is still going to run. Used to decide whether
+   * a review run in QUEUED actually has work behind it, or lost its job.
+   */
+  async hasLiveJob(name: QueueName, jobId: string): Promise<boolean> {
+    const job = await this.queue(name).getJob(jobId);
+    if (job === undefined) {
+      return false;
+    }
+    const state = await job.getState();
+    return (
+      state === 'waiting' ||
+      state === 'active' ||
+      state === 'delayed' ||
+      state === 'waiting-children' ||
+      state === 'prioritized'
+    );
   }
 
   async waitForJob<T>(

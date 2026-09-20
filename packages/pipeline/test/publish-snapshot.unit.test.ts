@@ -20,6 +20,7 @@ import {
   buildPublishArtifacts,
   enqueuePublish,
   enqueueReview,
+  reconcileStaleReviews,
   parsePublishArtifacts,
   publishArtifacts,
   publishReview,
@@ -742,7 +743,7 @@ describe('enqueueReview / enqueuePublish prefer the queue, fall back to inline',
     const call = dispatch.mock.calls[0];
     expect(call?.[0]).toBe(QUEUES.processReview);
     expect(call?.[1]).toEqual({ reviewRunId: 'run-77', trigger: 'manual' });
-    expect(call?.[2]).toEqual({ deduplicationId: 'process-review:run-77' });
+    expect(call?.[2]).toEqual({ jobId: 'review-run-77' });
   });
 
   it('returns null when container.queue === null so the caller runs inline', async () => {
@@ -762,6 +763,50 @@ describe('enqueueReview / enqueuePublish prefer the queue, fall back to inline',
     expect(jobId).toBeNull();
     const call = dispatch.mock.calls[0];
     expect(call?.[0]).toBe(QUEUES.publishReview);
-    expect(call?.[2]).toEqual({ deduplicationId: 'publish-review:run-77' });
+    expect(call?.[2]).toEqual({ jobId: 'publish-run-77' });
+  });
+});
+
+describe('reconcileStaleReviews', () => {
+  function prismaWithStale(rows: readonly { id: string; trigger: string }[]) {
+    return { reviewRun: { findMany: vi.fn().mockResolvedValue(rows) } };
+  }
+
+  it('re-dispatches a QUEUED run that has no live job', async () => {
+    const dispatch = vi.fn().mockResolvedValue({ jobId: 'review-run-1', deduplicated: false });
+    const hasLiveJob = vi.fn().mockResolvedValue(false);
+    const container = fakeContainer({
+      prisma: prismaWithStale([{ id: 'run-1', trigger: 'MANUAL' }]),
+      queue: { dispatch, hasLiveJob },
+    });
+
+    const outcome = await reconcileStaleReviews(container);
+
+    expect(outcome).toEqual({ scanned: 1, requeued: 1, alive: 0 });
+    expect(hasLiveJob).toHaveBeenCalledWith(QUEUES.processReview, 'review-run-1');
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch.mock.calls[0]?.[2]).toEqual({ jobId: 'review-run-1' });
+  });
+
+  it('leaves a run alone while its job is still alive, so a backlog is never doubled', async () => {
+    const dispatch = vi.fn();
+    const container = fakeContainer({
+      prisma: prismaWithStale([{ id: 'run-2', trigger: 'MANUAL' }]),
+      queue: { dispatch, hasLiveJob: vi.fn().mockResolvedValue(true) },
+    });
+
+    const outcome = await reconcileStaleReviews(container);
+
+    expect(outcome).toEqual({ scanned: 1, requeued: 0, alive: 1 });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the process runs inline without a queue', async () => {
+    const container = fakeContainer({ queue: null });
+    await expect(reconcileStaleReviews(container)).resolves.toEqual({
+      scanned: 0,
+      requeued: 0,
+      alive: 0,
+    });
   });
 });
