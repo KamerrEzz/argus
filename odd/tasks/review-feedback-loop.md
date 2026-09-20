@@ -135,6 +135,19 @@ observed directly, not inferred:
   from `failure` to `neutral`, and the comment's progress section reported the
   earlier findings as not raised again.
 
+- [x] **T9 — the container image builds.**
+  `docker compose build` failed with `Cannot find module '@acr/shared'` on any
+  machine that had built locally. `.dockerignore` excluded `**/dist` but not
+  `*.tsbuildinfo`, so the host's incremental build metadata travelled into the
+  image; `tsc -b` then considered every project up to date and emitted no `dist`,
+  and the dependants could not resolve their workspace packages. Excluding the
+  metadata fixes the image, and teaching each package's `clean` script to remove
+  its own `tsconfig.tsbuildinfo` fixes the same trap locally (delete `dist`, keep
+  the metadata, and the next build silently emits nothing).
+  Evidence: commit; `docker compose build api` succeeds; `docker compose run --rm
+  migrate` applies migrations inside the container; `npm run clean -w @acr/shared`
+  followed by `npm run build:backend` succeeds.
+
 ## Verification
 
 - `npm run verify` (lint + typecheck + typecheck:tests + unit/integration/e2e)
