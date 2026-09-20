@@ -56,7 +56,8 @@ Never invent a file path or line number. Never call a tool that is not offered t
 }
 
 OUTPUT
-Call submit_findings exactly once when you are done, with the findings array - even when it is empty. Prose is not a finding channel: anything you describe without calling submit_findings is discarded. If you stop without calling it, the review records nothing from your reasoning.`;
+Call submit_findings exactly once when you are done, with the findings array - even when it is empty. Prose is not a finding channel: anything you describe without calling submit_findings is discarded. If you stop without calling it, the review records nothing from your reasoning.
+Every critical, high and security finding MUST carry evidence: quote the exact code or the file:line you read. A blocking finding without evidence is rejected and cannot be published, so a claim you cannot point at is a claim you should not make - drop the severity or drop the finding.`;
 }
 
 /**

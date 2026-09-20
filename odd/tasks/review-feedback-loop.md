@@ -99,6 +99,17 @@ observed directly, not inferred:
   security finding should block without evidence is a product decision, not a
   defect.
 
+- [x] **T5 — A blocking finding must carry evidence.**
+  Chosen over relaxing the policy: the cause is that the model is never required
+  to point at the line it read, so its critical/high/security findings can never
+  be published. `submit_findings` now rejects such a finding and fails the whole
+  submission, so the model cannot make the error go away by dropping the finding;
+  the system prompt states the rule up front. T4 remains the net for anything that
+  still reaches validation without evidence.
+  Evidence: commit `feat(ai): require evidence for critical, high and security
+  findings`; `packages/ai/test/submit-findings.unit.test.ts` (5 tests);
+  `npm run verify` 707/707.
+
 ## Verification
 
 - `npm run verify` (lint + typecheck + typecheck:tests + unit/integration/e2e)
