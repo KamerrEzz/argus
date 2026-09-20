@@ -1,6 +1,9 @@
 node_modules
 **/node_modules
 **/dist
+# Incremental build metadata from the host makes `tsc -b` believe the projects
+# are up to date, so it emits no dist and the image build fails on imports.
+**/*.tsbuildinfo
 .next
 .git
 .env
