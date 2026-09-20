@@ -8,6 +8,7 @@ import {
   checkRecordToOutcome,
   type CheckRunSummary,
   type FindingValidationOutcome,
+  type PriorFindingReference,
   type ReviewVerdict,
   type Severity,
 } from '@acr/shared';
@@ -74,6 +75,12 @@ export interface ReviewRenderContext {
   readonly durationMs: number;
   readonly dashboardUrl: string | null;
   readonly generatedAt?: Date;
+  /**
+   * Findings raised by earlier runs on this pull request. They are what keeps a
+   * re-review honest: without them the comment silently drops everything the
+   * current run happened not to raise again.
+   */
+  readonly previousFindings?: readonly PriorFindingReference[];
 }
 
 export function findingSeverityIcon(severity: Severity): string {
@@ -126,6 +133,7 @@ export function renderReviewComment(context: ReviewRenderContext): string {
     lines.push(`> **Incomplete.** ${sanitizeUntrustedMarkdown(outcome.error ?? 'a node failed', 600)}`);
   }
 
+  lines.push(...renderProgress(context.previousFindings ?? [], outcome.validated));
   lines.push(...renderFindings(kept));
   lines.push(...renderChecks(outcome));
   lines.push(...renderWarnings(outcome));
@@ -149,6 +157,67 @@ function closeOpenCodeFence(markdown: string): string {
 
 function verdictBadge(verdict: ReviewVerdict): string {
   return verdict === 'failed' ? '❌' : verdict === 'passed' ? '✅' : '⚠️';
+}
+
+/**
+ * Says what changed since the earlier runs on this pull request. A re-review
+ * reports mostly new findings, so without this section the published comment
+ * replaces a list of critical findings with a shorter list of notes and the
+ * earlier findings appear to have been fixed when they were merely not raised
+ * again. The wording never claims a finding was fixed: this run either saw it
+ * again or it did not.
+ */
+function renderProgress(
+  previous: readonly PriorFindingReference[],
+  validated: readonly FindingValidationOutcome[],
+): string[] {
+  if (previous.length === 0) {
+    return [];
+  }
+  const previousFingerprints = new Set(previous.map((entry) => entry.fingerprint));
+  const current = new Set(validated.map((entry) => entry.fingerprint));
+
+  const fresh = validated.filter(
+    (entry) => entry.decision === 'keep' && !previousFingerprints.has(entry.fingerprint),
+  ).length;
+  const stillReported = previous.filter((entry) => current.has(entry.fingerprint)).length;
+  const carried = previous.filter((entry) => !current.has(entry.fingerprint));
+
+  const lines: string[] = ['', '### Progress since the previous review', ''];
+  lines.push(`- **${fresh} new** — reported for the first time by this run`);
+  lines.push(`- **${stillReported} still reported** — raised again by this run`);
+  if (carried.length > 0) {
+    const blocking = carried.filter(
+      (entry) => entry.severity === 'critical' || entry.severity === 'high',
+    ).length;
+    const blockingNote = blocking > 0 ? `, including ${blocking} critical/high` : '';
+    lines.push(
+      `- **${carried.length} from earlier runs were not raised again**${blockingNote} — this run neither confirmed nor cleared them, so check them before merging`,
+    );
+    // Name what was carried over: a count alone still hides which earlier
+    // findings are outstanding.
+    const named = carried
+      .filter(
+        (entry): entry is PriorFindingReference & { title: string } =>
+          typeof entry.title === 'string' && entry.title.trim().length > 0,
+      )
+      .slice(0, 10);
+    for (const entry of named) {
+      const location =
+        entry.file === undefined
+          ? ''
+          : entry.line === null || entry.line === undefined
+            ? `\`${entry.file}\``
+            : `\`${entry.file}:${entry.line}\``;
+      lines.push(
+        `  - ${findingSeverityIcon(entry.severity)} ${sanitizeUntrustedMarkdown(entry.title, 200)}${location.length > 0 ? ` — ${location}` : ''}`,
+      );
+    }
+    if (carried.length > named.length) {
+      lines.push(`  - …and ${carried.length - named.length} more`);
+    }
+  }
+  return lines;
 }
 
 function renderFindings(kept: readonly FindingValidationOutcome[]): string[] {

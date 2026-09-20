@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { hostname } from 'node:os';
-import { createContainer, type ApplicationContainer } from '@acr/pipeline';
+import { createContainer, reconcileStaleReviews, type ApplicationContainer } from '@acr/pipeline';
 import { WorkerPool } from '@acr/queue';
 import { logReservedQueues, registerWorkers } from './handlers';
 
@@ -48,6 +48,18 @@ export async function startWorker(): Promise<RunningWorker> {
     'worker started',
   );
   logReservedQueues(container.logger);
+
+  // A run row can be left in QUEUED with no job behind it and nothing else would
+  // ever pick it up. Reconcile once on start, and never block startup on it.
+  void reconcileStaleReviews(container)
+    .then((outcome) => {
+      if (outcome.scanned > 0) {
+        container.logger.info({ ...outcome }, 'review queue reconciliation finished');
+      }
+    })
+    .catch((error: unknown) => {
+      container.logger.warn({ error: String(error) }, 'review queue reconciliation failed');
+    });
 
   const health = startHealthServer(container);
   return { pool, container, health };

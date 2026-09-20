@@ -2,6 +2,8 @@ import {
   AppError,
   ConflictError,
   summarizeFindings,
+  type FindingDraft,
+  type PriorFindingReference,
   type RepoWorkspace,
   type RepositoryRef,
   type RepositorySettings,
@@ -13,6 +15,7 @@ import {
   type ReviewVerdict,
 } from '@acr/shared';
 import { z } from 'zod';
+import { listStaleQueuedRuns } from '@acr/database';
 import { runReviewGraph, type ReviewOutcome } from '@acr/ai';
 import { CHECK_RUN_NAME } from '@acr/github';
 import { QUEUES, type ProcessReviewJob, type PublishReviewJob } from '@acr/queue';
@@ -29,7 +32,13 @@ import {
 import { buildScriptCatalog, type ScriptCatalog } from './checks';
 import type { ApplicationContainer } from './container';
 import { assembleReviewPorts, deriveAgentPermissions } from './graph-ports';
-import { renderCheckRun, renderReviewComment, type ReviewRenderContext } from './markdown';
+import {
+  findingSeverityIcon,
+  renderCheckRun,
+  renderReviewComment,
+  sanitizeUntrustedMarkdown,
+  type ReviewRenderContext,
+} from './markdown';
 
 /** Reviewers need a stable, human-readable name to recognise across runs. */
 export { CHECK_RUN_NAME } from '@acr/github';
@@ -199,6 +208,18 @@ export async function requestReview(
   };
 }
 
+/**
+ * Deterministic job ids. BullMQ job ids must not contain `:`, and a stable id
+ * is what lets the queue reconciler ask whether a QUEUED run still has a job.
+ */
+export function reviewJobId(reviewRunId: string): string {
+  return `review-${reviewRunId}`;
+}
+
+export function publishJobId(reviewRunId: string): string {
+  return `publish-${reviewRunId}`;
+}
+
 /** Push the run onto the queue, or report `null` when this process runs inline. */
 export async function enqueueReview(
   container: ApplicationContainer,
@@ -210,7 +231,7 @@ export async function enqueueReview(
   const dispatched = await container.queue.dispatch<ProcessReviewJob>(
     QUEUES.processReview,
     job,
-    { deduplicationId: `process-review:${job.reviewRunId}` },
+    { jobId: reviewJobId(job.reviewRunId) },
   );
   return dispatched.jobId;
 }
@@ -223,9 +244,71 @@ export async function enqueuePublish(
     return null;
   }
   const dispatched = await container.queue.dispatch<PublishReviewJob>(QUEUES.publishReview, job, {
-    deduplicationId: `publish-review:${job.reviewRunId}`,
+    jobId: publishJobId(job.reviewRunId),
   });
   return dispatched.jobId;
+}
+
+/** A QUEUED run older than this has lost the job that was meant to move it. */
+export const STALE_QUEUED_MS = 5 * 60_000;
+
+export interface ReconcileOutcome {
+  readonly scanned: number;
+  readonly requeued: number;
+  readonly alive: number;
+}
+
+/**
+ * A run row can sit in QUEUED with no BullMQ job behind it — the dispatch threw,
+ * or Redis was replaced while the row survived. Nothing else notices, so the
+ * dashboard counts it as pending work forever and it never runs. On worker start
+ * we look for those and re-dispatch only the ones that truly have no live job,
+ * so a healthy backlog is never doubled.
+ */
+export async function reconcileStaleReviews(
+  container: ApplicationContainer,
+  options: { readonly olderThanMs?: number; readonly now?: Date; readonly limit?: number } = {},
+): Promise<ReconcileOutcome> {
+  const { queue, logger } = container;
+  if (queue === null) {
+    return { scanned: 0, requeued: 0, alive: 0 };
+  }
+  const now = options.now ?? new Date();
+  const olderThan = new Date(now.getTime() - (options.olderThanMs ?? STALE_QUEUED_MS));
+  const stale = await listStaleQueuedRuns(container.prisma, {
+    olderThan,
+    limit: options.limit ?? 100,
+  });
+
+  let requeued = 0;
+  let alive = 0;
+  for (const run of stale) {
+    if (await queue.hasLiveJob(QUEUES.processReview, reviewJobId(run.reviewRunId))) {
+      alive += 1;
+      continue;
+    }
+    const jobId = await enqueueReview(container, {
+      reviewRunId: run.reviewRunId,
+      trigger: run.trigger,
+      requestedBy: 'queue-reconciler',
+    });
+    if (jobId === null) {
+      logger.warn({ reviewRunId: run.reviewRunId }, 'queued review could not be re-dispatched');
+      continue;
+    }
+    requeued += 1;
+    logger.warn(
+      { reviewRunId: run.reviewRunId, jobId },
+      'queued review had no live job; re-dispatched',
+    );
+  }
+  if (requeued > 0) {
+    logger.warn(
+      { requeued, scanned: stale.length },
+      're-dispatched reviews that had lost their queue job',
+    );
+  }
+  return { scanned: stale.length, requeued, alive };
 }
 
 /**
@@ -304,6 +387,7 @@ async function runLockedReview(
   let workspace: RepoWorkspace | null = null;
   let outcome: ReviewOutcome | null = null;
   let failure: Error | null = null;
+  let previousFindings: readonly PriorFindingReference[] = [];
 
   try {
     const token = await container.github.auth.resolveToken(repository.installationId);
@@ -317,7 +401,7 @@ async function runLockedReview(
     });
 
     const catalog = await buildScriptCatalog(workspace);
-    const previousFindings = await persistence.loadPreviousFindings(
+    previousFindings = await persistence.loadPreviousFindings(
       target.pullRequestId,
       reviewRunId,
     );
@@ -369,6 +453,7 @@ async function runLockedReview(
       durationMs,
       startedAt,
       options,
+      previousFindings,
     });
     Object.assign(published, finished);
     return toResult(reviewRunId, outcome, published, null, durationMs);
@@ -436,6 +521,8 @@ interface FinishInput {
   readonly durationMs: number;
   readonly startedAt: number;
   readonly options: ExecuteReviewOptions;
+  /** Findings from earlier runs on this pull request, for the progress section. */
+  readonly previousFindings: readonly PriorFindingReference[];
 }
 
 async function finishAndPublish(
@@ -509,6 +596,7 @@ async function finishAndPublish(
       model: container.config.llm.model,
       durationMs,
       dashboardUrl: dashboardUrl(container, target.reviewRunId),
+      previousFindings: input.previousFindings,
     },
   });
 
@@ -548,6 +636,15 @@ function summarizeForRun(outcome: ReviewOutcome): string {
   );
 }
 
+export interface InlineFindingComment {
+  readonly fingerprint: string;
+  readonly path: string;
+  readonly line: number;
+  /** Set only for a multi-line finding, so GitHub anchors the whole range. */
+  readonly startLine: number | null;
+  readonly body: string;
+}
+
 /**
  * What a publish actually sends. Rendering happens once, at review time, so an
  * approval later publishes exactly what a human read — not a fresh render of
@@ -562,6 +659,8 @@ export interface PublishArtifacts {
   readonly checkRun: CheckRunSummary;
   readonly createComment: boolean;
   readonly createCheckRun: boolean;
+  readonly inline: readonly InlineFindingComment[];
+  readonly createInlineComments: boolean;
 }
 
 export interface PublishReviewInput {
@@ -586,7 +685,58 @@ export function buildPublishArtifacts(
     checkRun: renderCheckRun(renderContext),
     createComment: settings.publishSummaryComment,
     createCheckRun: settings.createCheckRun && container.config.features.checkRunEnabled,
+    inline: settings.publishFindingsAsComments ? renderInlineFindings(renderContext) : [],
+    createInlineComments: settings.publishFindingsAsComments,
   };
+}
+
+/** GitHub rejects a line outside the diff, so a bounded number keeps the blast radius sane. */
+const MAX_INLINE_FINDINGS = 25;
+const MAX_INLINE_BODY_CHARS = 4_000;
+
+/**
+ * One inline comment per publishable finding that has a line. A finding without
+ * a line cannot be anchored to the diff and stays in the summary comment only.
+ */
+export function renderInlineFindings(
+  context: ReviewRenderContext,
+): readonly InlineFindingComment[] {
+  const comments: InlineFindingComment[] = [];
+  for (const entry of context.outcome.validated) {
+    if (!entry.publishable) {
+      continue;
+    }
+    const { finding } = entry;
+    if (finding.line === null) {
+      continue;
+    }
+    const end = finding.endLine === null || finding.endLine <= finding.line
+      ? finding.line
+      : finding.endLine;
+    comments.push({
+      fingerprint: entry.fingerprint,
+      path: finding.file,
+      line: end,
+      startLine: end === finding.line ? null : finding.line,
+      body: renderInlineBody(entry.finding),
+    });
+    if (comments.length >= MAX_INLINE_FINDINGS) {
+      break;
+    }
+  }
+  return comments;
+}
+
+function renderInlineBody(finding: FindingDraft): string {
+  const lines = [
+    `${findingSeverityIcon(finding.severity)} **${sanitizeUntrustedMarkdown(finding.title, 200)}** · ${finding.category} · confidence ${(finding.confidence * 100).toFixed(0)}%`,
+    '',
+    sanitizeUntrustedMarkdown(finding.description),
+  ];
+  if (finding.suggestion !== null && finding.suggestion.trim().length > 0) {
+    lines.push('', `**Suggestion:** ${sanitizeUntrustedMarkdown(finding.suggestion, 800)}`);
+  }
+  return lines.join('\n').slice(0, MAX_INLINE_BODY_CHARS);
 }
 
 const RepositoryRefSchema = z.object({
@@ -612,6 +762,19 @@ const ArtifactsPayloadSchema = z.object({
   }),
   createComment: z.boolean(),
   createCheckRun: z.boolean(),
+  // Defaults keep a snapshot written before inline publishing readable.
+  inline: z
+    .array(
+      z.object({
+        fingerprint: z.string().min(1),
+        path: z.string().min(1),
+        line: z.number().int().positive(),
+        startLine: z.number().int().positive().nullable(),
+        body: z.string().min(1),
+      }),
+    )
+    .default([]),
+  createInlineComments: z.boolean().default(false),
 });
 
 type ArtifactsParseResult =
@@ -680,6 +843,45 @@ export async function publishArtifacts(
     }
   } else {
     result.skippedReason = 'comment_disabled_by_settings';
+  }
+
+  if (artifacts.createInlineComments && artifacts.inline.length > 0) {
+    const published: { fingerprint: string; commentId: number | null }[] = [];
+    let posted = 0;
+    for (const entry of artifacts.inline) {
+      try {
+        const ref = await container.github.publish.createReviewComment({
+          repository,
+          pullRequestNumber: artifacts.pullRequestNumber,
+          commitId: artifacts.headSha,
+          path: entry.path,
+          line: entry.line,
+          startLine: entry.startLine,
+          body: entry.body,
+        });
+        published.push({ fingerprint: entry.fingerprint, commentId: ref.id });
+        posted += 1;
+      } catch (error) {
+        // A line outside the diff is a normal rejection, not a failed review.
+        published.push({ fingerprint: entry.fingerprint, commentId: null });
+        logger.warn(
+          { reviewRunId, path: entry.path, line: entry.line, error: describe(error) },
+          'inline finding could not be published',
+        );
+      }
+    }
+    await container.persistence
+      .markFindingsPublished(reviewRunId, published)
+      .catch((error: unknown) =>
+        logger.warn(
+          { reviewRunId, error: describe(error) },
+          'could not record the inline comment ids',
+        ),
+      );
+    logger.info(
+      { reviewRunId, posted, attempted: artifacts.inline.length },
+      'inline findings published',
+    );
   }
 
   if (artifacts.createCheckRun) {

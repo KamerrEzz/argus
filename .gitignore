@@ -27,3 +27,6 @@ playwright-report/
 *.key
 prisma/generated/
 .DS_Store
+
+# downloaded review artifacts
+*.sarif

@@ -378,7 +378,7 @@ describe('QueueClient wiring against @acr/config defaults', () => {
     const result = await client.dispatch(QUEUES.processReview, {
       ...processReviewProducerShape,
       unexpectedField: 'must be stripped',
-    }, { deduplicationId: 'process-review:run_01ABC', delayMs: 500, attempts: 1 });
+    }, { jobId: 'review-run_01ABC', deduplicationId: 'process-review:run_01ABC', delayMs: 500, attempts: 1 });
 
     expect(result).toEqual({ jobId: null, deduplicated: true });
     expect(bullmqMocks.added).toHaveLength(1);
@@ -388,7 +388,9 @@ describe('QueueClient wiring against @acr/config defaults', () => {
     expect(args[0]).toBe(QUEUES.processReview);
     expect(args[1]).toEqual(processReviewProducerShape);
     expect(args[2]).toEqual({
-      deduplicationId: 'process-review:run_01ABC',
+      jobId: 'review-run_01ABC',
+      // BullMQ reads `deduplication.id`; `deduplicationId` was ignored entirely.
+      deduplication: { id: 'process-review:run_01ABC' },
       delay: 500,
       attempts: 1,
     });

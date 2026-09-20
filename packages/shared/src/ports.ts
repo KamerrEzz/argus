@@ -293,6 +293,20 @@ export interface GithubPublishPort {
     readonly commentId: number;
     readonly body: string;
   }): Promise<ReviewCommentRef>;
+  /**
+   * Posts one comment anchored to a line of the pull request diff. GitHub
+   * rejects a line that is not part of the diff, so callers treat a failure as
+   * "skip this finding inline" rather than failing the publish.
+   */
+  createReviewComment(input: {
+    readonly repository: RepositoryRef;
+    readonly pullRequestNumber: number;
+    readonly commitId: string;
+    readonly path: string;
+    readonly line: number;
+    readonly startLine: number | null;
+    readonly body: string;
+  }): Promise<ReviewCommentRef>;
   createCheckRun(input: {
     readonly repository: RepositoryRef;
     readonly headSha: string;

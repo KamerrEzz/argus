@@ -79,6 +79,10 @@ export interface PriorFindingReference {
   readonly fingerprint: string;
   readonly status: FindingStatus;
   readonly severity: Severity;
+  /** Optional display fields, so a report can name a carried-over finding. */
+  readonly title?: string;
+  readonly file?: string;
+  readonly line?: number | null;
 }
 
 const GENERIC_TITLE_PATTERNS: readonly string[] = [
@@ -182,6 +186,7 @@ export function validateFinding(
 ): FindingValidationOutcome {
   const reasons: string[] = [];
   let decision: 'keep' | 'discard' = 'keep';
+  let unpublishableReason: string | null = null;
   const minKeepConfidence = policy.minKeepConfidence ?? 0.4;
   const downgradeThreshold = policy.severityDowngradeConfidence ?? 0.7;
   const evidenceSeverities = policy.requireEvidenceForSeverities ?? ['critical'];
@@ -226,7 +231,11 @@ export function validateFinding(
 
   const evidenceRequired = evidenceSeverities.includes(finding.severity) || finding.category === 'security';
   if (evidenceRequired && (finding.evidence === null || finding.evidence.trim().length < 8)) {
-    decision = 'discard';
+    // A critical/high or security finding without evidence is not trustworthy
+    // enough to publish, but discarding it outright is how a leaked credential
+    // disappears from the report while the pull request looks clean. Keep it
+    // visible and unpublishable instead, and say why.
+    unpublishableReason = 'missing_evidence';
     reasons.push('missing_evidence');
   }
 
@@ -247,7 +256,10 @@ export function validateFinding(
   }
 
   const publishable =
-    decision === 'keep' && withinScope && finding.confidence >= policy.minPublishConfidence;
+    decision === 'keep' &&
+    withinScope &&
+    unpublishableReason === null &&
+    finding.confidence >= policy.minPublishConfidence;
 
   if (publishable && reasons.length === 0) {
     reasons.push('validated');
