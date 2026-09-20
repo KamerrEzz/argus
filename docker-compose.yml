@@ -66,6 +66,10 @@ services:
       GITHUB_APP_ID: ${GITHUB_APP_ID:-}
       GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
       GITHUB_PRIVATE_KEY: ${GITHUB_PRIVATE_KEY:-}
+      # Keeping the key in a file is the safer option the README recommends, so a
+      # container deploy has to be able to use it too: set this to a path inside
+      # the container and mount the file (see the api/worker volumes).
+      GITHUB_PRIVATE_KEY_PATH: ${GITHUB_PRIVATE_KEY_PATH:-}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai-compatible}
@@ -85,6 +89,9 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
       - workspaces:/workspaces
+      # Mount the App private key when you configure GITHUB_PRIVATE_KEY_PATH, and
+      # point that variable at the in-container path:
+      # - ./acr-local.private-key.pem:/repo/secrets/github-app.pem:ro
     ports:
       - "127.0.0.1:4000:4000"
     depends_on:
@@ -109,6 +116,9 @@ services:
     environment: *backend-env
     volumes:
       - workspaces:/workspaces
+      # Mount the App private key when you configure GITHUB_PRIVATE_KEY_PATH, and
+      # point that variable at the in-container path:
+      # - ./acr-local.private-key.pem:/repo/secrets/github-app.pem:ro
       # Only needed for SANDBOX_MODE=docker, and it hands the container root on
       # the host to whatever runs inside it. Off by default on purpose.
       # - /var/run/docker.sock:/var/run/docker.sock

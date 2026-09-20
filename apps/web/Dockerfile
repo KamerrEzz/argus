@@ -14,6 +14,11 @@ RUN npm ci --no-audit --no-fund
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
+# NODE_ENV stays development above so npm ci installs the toolchain, but
+# `next build` must run in production: under development React resolves
+# differently and prerendering /_global-error fails with
+# "Cannot read properties of null (reading 'useContext')".
+ENV NODE_ENV=production
 RUN npm run build -w @acr/web
 
 FROM base AS runtime
@@ -25,4 +30,6 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 EXPOSE 3000
 USER node
-CMD ["node", "apps/web/.next/standalone/apps/web/server.js"]
+# COPY copies the *contents* of standalone into /repo, so the server lands at
+# apps/web/server.js - not at the nested path it has inside .next.
+CMD ["node", "apps/web/server.js"]
