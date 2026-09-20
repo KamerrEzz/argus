@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Argus — Documentation / Documentación</title>
+<meta name="description" content="Argus is a self-hosted AI pull-request reviewer: sandboxed checks, a LangGraph review pipeline, and one honest review on the PR." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,300;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#07080c; --bg-2:#0b0d13; --panel:#10131b; --panel-2:#151a25;
+    --line:rgba(233,231,226,.10); --line-2:rgba(233,231,226,.20);
+    --text:#e9e7e2; --dim:#a5a19a; --faint:#726f69;
+    --amber:#e3a63f; --amber-2:#f3d9a4; --amber-glow:rgba(227,166,63,.13);
+    --iris:#7fd1c0;
+    --crit:#ff6058; --high:#ff9f45; --med:#e3c04f; --low:#6ea8fe; --info:#8b93a3;
+    --r:14px; --max:1180px;
+    --display:"Fraunces","Iowan Old Style",Georgia,serif;
+    --sans:"Archivo",ui-sans-serif,system-ui,-apple-system,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html{scroll-behavior:smooth;scroll-padding-top:90px;-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:var(--sans);font-size:16px;line-height:1.65;
+    font-variant-ligatures:common-ligatures;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(900px 520px at 78% -8%, rgba(227,166,63,.10), transparent 62%),
+      radial-gradient(700px 420px at 6% 4%, rgba(127,209,192,.05), transparent 60%);
+    background-repeat:no-repeat;
+  }
+  /* grain: an instrument, not a web page */
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:99;opacity:.32;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='.5'/></svg>");
+  }
+  a{color:var(--amber);text-decoration:none;text-underline-offset:3px}
+  a:hover{text-decoration:underline}
+  code,kbd,samp{font-family:var(--mono);font-size:.86em}
+  p code,li code,td code{background:var(--amber-glow);border:1px solid var(--line);border-radius:5px;padding:.08em .38em;color:var(--amber-2)}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);
+    background:rgba(7,8,12,.82);border-bottom:1px solid var(--line);
+  }
+  .topbar-in{max-width:var(--max);margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:18px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-size:20px;font-weight:700;letter-spacing:.01em;color:var(--text)}
+  .brand:hover{text-decoration:none}
+  .brand svg{width:22px;height:22px;flex:none}
+  .brand em{font-style:normal;color:var(--amber)}
+  .topbar .spacer{flex:1}
+  .ghost{font-size:12.5px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase;font-family:var(--mono)}
+  .ghost:hover{color:var(--text);text-decoration:none}
+  .lang{display:flex;border:1px solid var(--line-2);border-radius:999px;overflow:hidden}
+  .lang button{
+    appearance:none;background:transparent;border:0;color:var(--dim);cursor:pointer;
+    font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;padding:6px 13px;text-transform:uppercase;
+    transition:background .18s,color .18s;
+  }
+  .lang button[aria-pressed="true"]{background:var(--amber);color:#14100a;font-weight:700}
+  .lang button:not([aria-pressed="true"]):hover{color:var(--text);background:rgba(255,255,255,.04)}
+
+  /* ---------- shell ---------- */
+  .shell{max-width:var(--max);margin:0 auto;padding:0 24px;display:grid;grid-template-columns:224px minmax(0,1fr);gap:52px}
+  @media (max-width:900px){.shell{grid-template-columns:1fr;gap:0}.sidebar{display:none}}
+
+  .sidebar{position:sticky;top:74px;align-self:start;max-height:calc(100vh - 96px);overflow-y:auto;padding:34px 0 60px}
+  .sidebar h4{margin:0 0 12px;font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);font-weight:500}
+  .sidebar nav{display:flex;flex-direction:column;gap:1px}
+  .sidebar a{
+    display:flex;gap:10px;align-items:baseline;padding:6px 10px;border-radius:8px;color:var(--dim);
+    font-size:14px;border-left:2px solid transparent;transition:color .15s,background .15s,border-color .15s;
+  }
+  .sidebar a span{font-family:var(--mono);font-size:10.5px;color:var(--faint);flex:none}
+  .sidebar a:hover{color:var(--text);background:rgba(255,255,255,.03);text-decoration:none}
+  .sidebar a.active{color:var(--amber-2);border-left-color:var(--amber);background:var(--amber-glow)}
+  .sidebar a.active span{color:var(--amber)}
+
+  main{padding-bottom:110px;min-width:0}
+
+  /* ---------- hero ---------- */
+  .hero{padding:66px 0 44px;border-bottom:1px solid var(--line);position:relative}
+  .hero-grid{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:40px;align-items:center}
+  @media (max-width:700px){.hero-grid{grid-template-columns:1fr}.hero-eye{display:none}}
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.26em;text-transform:uppercase;color:var(--amber);margin:0 0 18px}
+  h1{
+    font-family:var(--display);font-weight:600;font-size:clamp(56px,11vw,104px);line-height:.92;
+    margin:0 0 20px;letter-spacing:-.02em;font-variation-settings:"SOFT" 0,"WONK" 1;
+  }
+  h1 span{color:var(--amber);font-style:italic;font-weight:300}
+  .lede{font-size:19px;color:var(--dim);max-width:60ch;margin:0 0 30px}
+  .lede strong{color:var(--text);font-weight:600}
+  .cta{display:flex;flex-wrap:wrap;gap:12px}
+  .btn{
+    display:inline-flex;align-items:center;gap:9px;padding:11px 20px;border-radius:999px;
+    font-size:14.5px;font-weight:600;border:1px solid var(--line-2);color:var(--text);
+    transition:transform .16s ease,background .16s,border-color .16s;
+  }
+  .btn svg{width:15px;height:15px;flex:none}
+  .btn.primary svg{transition:transform .18s ease}
+  .btn.primary:hover svg{transform:translateX(3px)}
+  .btn.primary{background:var(--amber);border-color:var(--amber);color:#14100a}
+  .btn.primary:hover{background:var(--amber-2)}
+  .btn.ghost:hover{border-color:var(--amber);color:var(--amber-2)}
+  .facts{display:flex;flex-wrap:wrap;gap:12px 30px;margin:34px 0 0;padding:0;list-style:none}
+  .facts li{font-family:var(--mono);font-size:12px;color:var(--faint);letter-spacing:.03em}
+  .facts b{color:var(--text);font-weight:500}
+  .hero-eye{display:flex;justify-content:center;align-items:center}
+  .iris{width:170px;height:170px;filter:drop-shadow(0 0 34px rgba(227,166,63,.28))}
+  .ring-a{transform-origin:60px 60px;animation:spin 44s linear infinite}
+  .ring-b{transform-origin:60px 60px;animation:spin 28s linear infinite reverse}
+  .pupil{transform-origin:60px 60px;animation:breathe 7s ease-in-out infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+
+  /* ---------- sections ---------- */
+  section{padding:52px 0 8px;border-bottom:1px solid var(--line)}
+  section:last-of-type{border-bottom:0}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin:0 0 8px}
+  .sec-num{font-family:var(--mono);font-size:12px;color:var(--amber);letter-spacing:.1em;flex:none;padding-top:4px}
+  h2{font-family:var(--display);font-weight:600;font-size:clamp(27px,3.6vw,38px);line-height:1.15;margin:0;letter-spacing:-.01em}
+  h3{font-family:var(--sans);font-weight:600;font-size:17px;margin:34px 0 10px;letter-spacing:.005em}
+  h3:first-of-type{margin-top:24px}
+  .sub{color:var(--dim);margin:6px 0 22px;max-width:72ch}
+  section p{margin:0 0 15px;max-width:74ch;color:#d9d6cf}
+  section ul,section ol{margin:0 0 16px;padding-left:20px;max-width:74ch;color:#d9d6cf}
+  li{margin:5px 0}
+  li::marker{color:var(--amber);font-family:var(--mono);font-size:.9em}
+
+  /* code */
+  pre{
+    background:linear-gradient(180deg,var(--panel),var(--bg-2));border:1px solid var(--line);
+    border-radius:var(--r);padding:16px 18px;overflow-x:auto;margin:0 0 18px;position:relative;
+  }
+  pre::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:linear-gradient(180deg,var(--amber),transparent);border-radius:var(--r) 0 0 var(--r)}
+  pre code{color:#dfdcd6;font-size:13px;line-height:1.7}
+  .cmt{color:var(--faint)}
+  .var{color:var(--amber-2)}
+  .str{color:var(--iris)}
+
+  /* tables */
+  .tw{overflow-x:auto;margin:0 0 20px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel)}
+  table{width:100%;border-collapse:collapse;font-size:14px;min-width:520px}
+  th{
+    text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint);font-weight:500;padding:12px 16px;border-bottom:1px solid var(--line-2);background:var(--bg-2);
+  }
+  td{padding:11px 16px;border-bottom:1px solid var(--line);vertical-align:top;color:#d5d2cb}
+  tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:rgba(227,166,63,.035)}
+  td:first-child{font-family:var(--mono);font-size:12.5px;color:var(--amber-2);white-space:nowrap}
+
+  /* cards */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:14px;margin:0 0 24px}
+  .card{
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--line);
+    border-radius:var(--r);padding:18px 18px 16px;transition:border-color .2s,transform .2s;
+  }
+  .card:hover{border-color:var(--line-2);transform:translateY(-2px)}
+  .card h5{margin:0 0 7px;font-size:14.5px;font-weight:600;font-family:var(--mono);color:var(--amber-2);letter-spacing:.01em}
+  .card p{margin:0;font-size:14px;color:var(--dim);max-width:none}
+
+  /* callouts */
+  .note{
+    border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:0 var(--r) var(--r) 0;
+    background:var(--amber-glow);padding:14px 18px;margin:0 0 20px;font-size:14.5px;color:#e5e2db;max-width:74ch;
+  }
+  .note b{color:var(--amber-2)}
+  .note.warn{border-left-color:var(--crit);background:rgba(255,96,88,.07)}
+  .note.warn b{color:#ffb3ae}
+
+  /* steps */
+  .steps{list-style:none;padding:0;margin:0 0 22px;counter-reset:s}
+  .steps li{
+    counter-increment:s;position:relative;padding:0 0 18px 46px;margin:0;max-width:74ch;color:#d5d2cb;
+  }
+  .steps li::before{
+    content:counter(s,decimal-leading-zero);position:absolute;left:0;top:1px;
+    font-family:var(--mono);font-size:11px;color:var(--amber);border:1px solid var(--line-2);
+    border-radius:7px;width:29px;height:24px;display:grid;place-items:center;background:var(--panel);
+  }
+  .steps li::after{content:"";position:absolute;left:14.5px;top:29px;bottom:0;width:1px;background:var(--line)}
+  .steps li:last-child{padding-bottom:0}
+  .steps li:last-child::after{display:none}
+  .steps b{color:var(--text);font-weight:600}
+
+  /* severity chips */
+  .sev{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11.5px;letter-spacing:.05em}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .s-crit .dot{background:var(--crit);box-shadow:0 0 9px var(--crit)} .s-crit{color:#ffb3ae}
+  .s-high .dot{background:var(--high)} .s-high{color:#ffc98f}
+  .s-med  .dot{background:var(--med)}  .s-med{color:#efd98a}
+  .s-low  .dot{background:var(--low)}  .s-low{color:#a9c8ff}
+
+  /* checklist */
+  .check{list-style:none;padding:0;margin:0 0 20px;max-width:74ch}
+  .check li{display:flex;gap:11px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line);color:#d5d2cb}
+  .check li:last-child{border-bottom:0}
+  .check .box{
+    width:15px;height:15px;border:1px solid var(--line-2);border-radius:4px;flex:none;margin-top:4px;
+    display:grid;place-items:center;font-size:10px;color:var(--amber);background:var(--panel);
+  }
+  .check .box svg{width:10px;height:10px;display:block}
+
+  footer{border-top:1px solid var(--line);margin-top:40px;padding:34px 0 60px;color:var(--faint);font-size:13px}
+  footer .frow{display:flex;flex-wrap:wrap;gap:16px 26px;align-items:center;justify-content:space-between}
+  footer .mono{font-family:var(--mono);font-size:11.5px;letter-spacing:.05em}
+  footer svg{width:15px;height:15px;vertical-align:-3px;margin-right:7px}
+
+  :focus-visible{outline:2px solid var(--amber);outline-offset:3px;border-radius:4px}
+  ::selection{background:rgba(227,166,63,.3)}
+
+  .reveal{opacity:0;transform:translateY(14px);animation:rise .7s cubic-bezier(.2,.7,.3,1) forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    .reveal{opacity:1;transform:none}
+    html{scroll-behavior:auto}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="#top">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="10.2" fill="none" stroke="#e3a63f" stroke-width=".9" opacity=".45"/>
+        <circle cx="12" cy="12" r="5.4" fill="#e3a63f"/>
+        <ellipse cx="12" cy="12" rx="1.7" ry="4.9" fill="#07080c"/>
+      </svg>
+      Argus<em>.</em>
+    </a>
+    <span class="spacer"></span>
+    <a class="ghost" href="#inicio-rapido" data-en="Quickstart" data-es="Inicio rápido">Quickstart</a>
+    <a class="ghost" href="#api" data-en="API" data-es="API">API</a>
+    <div class="lang" role="group" aria-label="Language / Idioma">
+      <button type="button" data-set="en" aria-pressed="true">EN</button>
+      <button type="button" data-set="es" aria-pressed="false">ES</button>
+    </div>
+  </div>
+</header>
+
+<div class="shell" id="top">
+
+  <aside class="sidebar">
+    <h4 data-en="Contents" data-es="Contenido">Contents</h4>
+    <nav>
+      <a href="#que-es"><span>01</span><em data-en="What it does" data-es="Qué hace" style="font-style:normal">What it does</em></a>
+      <a href="#inicio-rapido"><span>02</span><em data-en="Quickstart" data-es="Inicio rápido" style="font-style:normal">Quickstart</em></a>
+      <a href="#pipeline"><span>03</span><em data-en="Review pipeline" data-es="Pipeline de review" style="font-style:normal">Review pipeline</em></a>
+      <a href="#arquitectura"><span>04</span><em data-en="Architecture" data-es="Arquitectura" style="font-style:normal">Architecture</em></a>
+      <a href="#configuracion"><span>05</span><em data-en="Configuration" data-es="Configuración" style="font-style:normal">Configuration</em></a>
+      <a href="#github"><span>06</span><em data-en="Connecting GitHub" data-es="Conectar GitHub" style="font-style:normal">Connecting GitHub</em></a>
+      <a href="#usarlo"><span>07</span><em data-en="Using it" data-es="Usarlo" style="font-style:normal">Using it</em></a>
+      <a href="#api"><span>08</span><em data-en="HTTP API" data-es="API HTTP" style="font-style:normal">HTTP API</em></a>
+      <a href="#seguridad"><span>09</span><em data-en="Sandbox &amp; policy" data-es="Sandbox y política" style="font-style:normal">Sandbox &amp; policy</em></a>
+      <a href="#despliegue"><span>10</span><em data-en="Deployment" data-es="Despliegue" style="font-style:normal">Deployment</em></a>
+      <a href="#tests"><span>11</span><em data-en="Testing" data-es="Testing" style="font-style:normal">Testing</em></a>
+      <a href="#problemas"><span>12</span><em data-en="Troubleshooting" data-es="Problemas" style="font-style:normal">Troubleshooting</em></a>
+      <a href="#limites"><span>13</span><em data-en="Known limits" data-es="Límites" style="font-style:normal">Known limits</em></a>
+    </nav>
+  </aside>
+
+  <main>
+
+    <!-- ============ HERO ============ -->
+    <div class="hero">
+      <div class="hero-grid">
+        <div>
+          <p class="kicker reveal" data-en="Self-hosted · LangGraph · Sandboxed" data-es="Self-hosted · LangGraph · Sandboxed">Self-hosted · LangGraph · Sandboxed</p>
+          <h1 class="reveal" style="animation-delay:.05s">Argus<span>.</span></h1>
+          <p class="lede reveal" style="animation-delay:.12s"
+             data-en="The hundred-eyed reviewer for your pull requests. It clones the head commit, runs your real checks inside a sandbox, reads the surrounding code through tools, and publishes one honest review: findings anchored to file and line, a verdict, and a GitHub check run."
+             data-es="El revisor de cien ojos para tus pull requests. Clona el head, corre tus checks reales dentro de un sandbox, lee el código alrededor con herramientas, y publica un review honesto: hallazgos anclados a archivo y línea, un veredicto y un check run de GitHub.">
+            The hundred-eyed reviewer for your pull requests. It clones the head commit, runs your real checks inside a sandbox, reads the surrounding code through tools, and publishes one honest review: findings anchored to file and line, a verdict, and a GitHub check run.
+          </p>
+          <div class="cta reveal" style="animation-delay:.19s">
+            <a class="btn primary" href="#inicio-rapido">
+              <span data-en="Start in five commands" data-es="Empezá en cinco comandos">Start in five commands</span>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8h10.5M9.4 4.2L13.2 8l-3.8 3.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </a>
+            <a class="btn ghost" href="#pipeline" data-en="See the pipeline" data-es="Ver el pipeline">See the pipeline</a>
+          </div>
+          <ul class="facts reveal" style="animation-delay:.26s">
+            <li><b data-en="Node" data-es="Node">Node</b> ≥ 22.12</li>
+            <li><b>Postgres</b> + <b>Redis</b></li>
+            <li><b data-en="Providers" data-es="Providers">Providers</b> OpenAI · OpenRouter · nan.builders · <span style="color:var(--dim)">openai-compatible</span></li>
+            <li><b data-en="Container" data-es="Contenedor">Container</b> docker compose</li>
+          </ul>
+        </div>
+        <div class="hero-eye">
+          <svg class="iris" viewBox="0 0 120 120" aria-hidden="true">
+            <defs>
+              <radialGradient id="irg" cx="50%" cy="46%">
+                <stop offset="0%" stop-color="#f6e2b6"/>
+                <stop offset="42%" stop-color="#e3a63f"/>
+                <stop offset="100%" stop-color="#4a3512"/>
+              </radialGradient>
+            </defs>
+            <circle cx="60" cy="60" r="55" fill="none" stroke="rgba(227,166,63,.32)" stroke-width=".9"/>
+            <circle class="ring-a" cx="60" cy="60" r="44" fill="none" stroke="rgba(227,166,63,.30)" stroke-width="1" stroke-dasharray="2 7"/>
+            <circle class="ring-b" cx="60" cy="60" r="34" fill="none" stroke="rgba(127,209,192,.22)" stroke-width="1" stroke-dasharray="1 5"/>
+            <circle cx="60" cy="60" r="29" fill="url(#irg)" opacity=".95"/>
+            <ellipse class="pupil" cx="60" cy="60" rx="8.6" ry="25" fill="#07080c"/>
+            <circle cx="60" cy="60" r="5.4" fill="none" stroke="rgba(255,255,255,.42)" stroke-width="1"/>
+            <circle cx="48" cy="47" r="3.1" fill="rgba(255,255,255,.5)"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 01 WHAT IT DOES ============ -->
+    <section id="que-es">
+      <div class="sec-head"><span class="sec-num">01</span>
+        <h2 data-en="What it does" data-es="Qué hace">What it does</h2></div>
+      <p class="sub" data-en="A review is not a diff summary. It is a claim about code that someone has to verify, so every finding carries the evidence that produced it." data-es="Un review no es un resumen del diff. Es una afirmación sobre el código que alguien tiene que verificar, así que cada hallazgo lleva la evidencia que lo produjo.">A review is not a diff summary. It is a claim about code that someone has to verify, so every finding carries the evidence that produced it.</p>
+      <div class="cards">
+        <div class="card">
+          <h5 data-en="Ground truth first" data-es="Primero la verdad del terreno">Ground truth first</h5>
+          <p data-en="Your own test, lint and typecheck scripts run in a sandbox. A failing script is stronger evidence than an opinion." data-es="Tus propios scripts de test, lint y typecheck corren en un sandbox. Un script que falla es evidencia más fuerte que una opinión.">Your own test, lint and typecheck scripts run in a sandbox. A failing script is stronger evidence than an opinion.</p>
+        </div>
+        <div class="card">
+          <h5 data-en="Tools, not guessing" data-es="Herramientas, no adivinanzas">Tools, not guessing</h5>
+          <p data-en="The model reads files, searches the repository and asks for more commands, bounded by a token, time and tool-call budget." data-es="El modelo lee archivos, busca en el repositorio y pide más comandos, acotado por un presupuesto de tokens, tiempo y tool calls.">The model reads files, searches the repository and asks for more commands, bounded by a token, time and tool-call budget.</p>
+        </div>
+        <div class="card">
+          <h5 data-en="Evidence required" data-es="Evidencia obligatoria">Evidence required</h5>
+          <p data-en="Critical, high and security findings must quote the line the model read, or the submission is rejected. A claim nobody can check is not published." data-es="Los hallazgos critical, high y de seguridad deben citar la línea que el modelo leyó, o la entrega se rechaza. Una afirmación que nadie puede verificar no se publica.">Critical, high and security findings must quote the line the model read, or the submission is rejected. A claim nobody can check is not published.</p>
+        </div>
+        <div class="card">
+          <h5 data-en="It remembers the PR" data-es="Recuerda el PR">It remembers the PR</h5>
+          <p data-en="A re-review is a delta: it reports what is new and names what earlier runs found and this one did not raise again." data-es="Un re-review es un delta: reporta lo nuevo y nombra lo que runs anteriores encontraron y este no volvió a levantar.">A re-review is a delta: it reports what is new and names what earlier runs found and this one did not raise again.</p>
+        </div>
+      </div>
+      <div class="note">
+        <b data-en="Self-hosted, not a hosted bot." data-es="Self-hosted, no un bot alojado.">Self-hosted, not a hosted bot.</b>
+        <span data-en=" You own the data, the model spend and the review policy. Every decision the agent makes is recorded and streamed." data-es=" Vos sos dueño de los datos, del gasto de modelo y de la política de review. Cada decisión del agente queda registrada y se transmite en vivo."> You own the data, the model spend and the review policy. Every decision the agent makes is recorded and streamed.</span>
+      </div>
+    </section>
+
+    <!-- ============ 02 QUICKSTART ============ -->
+    <section id="inicio-rapido">
+      <div class="sec-head"><span class="sec-num">02</span>
+        <h2 data-en="Quickstart" data-es="Inicio rápido">Quickstart</h2></div>
+      <p class="sub" data-en="Local development runs the three processes directly and keeps Postgres and Redis in containers. Five commands, then a review." data-es="El desarrollo local corre los tres procesos directo y deja Postgres y Redis en contenedores. Cinco comandos y un review.">Local development runs the three processes directly and keeps Postgres and Redis in containers. Five commands, then a review.</p>
+
+      <pre><code><span class="cmt"># 1 — dependencies</span>
+npm install
+
+<span class="cmt"># 2 — your settings: AUTH_SECRET is the only one with no default</span>
+cp .env.example .env
+
+<span class="cmt"># 3 — infrastructure only (Postgres + Redis)</span>
+npm run dev:infra
+
+<span class="cmt"># 4 — schema, then the three processes</span>
+npm run db:generate &amp;&amp; npm run db:migrate
+npm run dev            <span class="cmt"># api :4000 · worker · web :3000</span></code></pre>
+
+      <p data-en="Open http://localhost:3000 and sign in. The API creates the first account from BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD the first time it boots with an empty users table." data-es="Abrí http://localhost:3000 y entrá. El API crea la primera cuenta desde BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD la primera vez que arranca con la tabla de usuarios vacía.">Open http://localhost:3000 and sign in. The API creates the first account from <code>BOOTSTRAP_ADMIN_EMAIL</code> / <code>BOOTSTRAP_ADMIN_PASSWORD</code> the first time it boots with an empty users table.</p>
+
+      <div class="note">
+        <b data-en="Order matters." data-es="El orden importa.">Order matters.</b>
+        <span data-en=" Migrate before you boot. Without a schema the API fails with “table does not exist” — that is the missing step, not a broken install." data-es=" Migrá antes de arrancar. Sin schema el API falla con “table does not exist” — ese es el paso que falta, no una instalación rota."> Migrate before you boot. Without a schema the API fails with “table does not exist” — that is the missing step, not a broken install.</span>
+      </div>
+
+      <h3 data-en="Optional: demo data" data-es="Opcional: datos de demo">Optional: demo data</h3>
+      <pre><code>npm run db:seed      <span class="cmt"># seeded repositories, runs and findings + admin@example.com / change-me-please</span></code></pre>
+      <p data-en="The seed adopts any account that already owns the admin email instead of failing, and never overwrites a password — reseeding cannot invalidate a real account." data-es="El seed adopta cualquier cuenta que ya tenga el email de admin en vez de fallar, y nunca pisa un password — re-sembrar no puede invalidar una cuenta real.">The seed adopts any account that already owns the admin email instead of failing, and never overwrites a password — reseeding cannot invalidate a real account.</p>
+    </section>
+
+    <!-- ============ 03 PIPELINE ============ -->
+    <section id="pipeline">
+      <div class="sec-head"><span class="sec-num">03</span>
+        <h2 data-en="Review pipeline" data-es="Pipeline de review">Review pipeline</h2></div>
+      <p class="sub" data-en="One review, step by step. Every step is idempotent and streams events, so a crashed worker can be resumed." data-es="Un review, paso a paso. Cada paso es idempotente y emite eventos, así un worker caído se puede retomar.">One review, step by step. Every step is idempotent and streams events, so a crashed worker can be resumed.</p>
+      <ol class="steps">
+        <li><b data-en="Trigger" data-es="Disparo">Trigger</b> — <span data-en="webhook (verified, deduplicated by delivery id), API call, CLI, or retry." data-es="webhook (verificado, deduplicado por delivery id), llamada a la API, CLI o retry.">webhook (verified, deduplicated by delivery id), API call, CLI, or retry.</span></li>
+        <li><b data-en="Enqueue" data-es="Encolar">Enqueue</b> — <span data-en="a ReviewRun row with an idempotency key from (repository, pull request, head sha, trigger). Three webhooks from one push produce one review." data-es="una fila ReviewRun con clave de idempotencia de (repositorio, pull request, head sha, trigger). Tres webhooks de un push producen un review.">a ReviewRun row with an idempotency key from (repository, pull request, head sha, trigger). Three webhooks from one push produce one review.</span></li>
+        <li><b data-en="Lock" data-es="Lock">Lock</b> — <span data-en="a Redis lock on review:&lt;pullRequestId&gt; stops two workers reviewing the same pull request at once." data-es="un lock de Redis sobre review:&lt;pullRequestId&gt; evita que dos workers revisen el mismo pull request a la vez.">a Redis lock on <code>review:&lt;pullRequestId&gt;</code> stops two workers reviewing the same pull request at once.</span></li>
+        <li><b data-en="Prepare" data-es="Preparar">Prepare</b> — <span data-en="shallow clone of the head commit into a workspace keyed by the run, plus PR metadata, commits and file list from GitHub." data-es="clone shallow del head a un workspace por run, más metadata del PR, commits y lista de archivos desde GitHub.">shallow clone of the head commit into a workspace keyed by the run, plus PR metadata, commits and file list from GitHub.</span></li>
+        <li><b data-en="Classify" data-es="Clasificar">Classify</b> — <span data-en="changed files are bucketed (source, test, docs, generated, …) and the plan decides which checks are worth running." data-es="los archivos cambiados se agrupan (source, test, docs, generated, …) y el plan decide qué checks vale la pena correr.">changed files are bucketed (source, test, docs, generated, …) and the plan decides which checks are worth running.</span></li>
+        <li><b data-en="Run checks" data-es="Correr checks">Run checks</b> — <span data-en="planned scripts execute in the sandbox; output is parsed into findings with real file and line anchors." data-es="los scripts planificados corren en el sandbox; la salida se parsea en hallazgos con anclas reales de archivo y línea.">planned scripts execute in the sandbox; output is parsed into findings with real file and line anchors.</span></li>
+        <li><b data-en="Agent loop" data-es="Loop del agente">Agent loop</b> — <span data-en="the model reads files, searches the repository, requests commands and drafts findings, bounded by budget and permissions." data-es="el modelo lee archivos, busca en el repo, pide comandos y redacta hallazgos, acotado por presupuesto y permisos.">the model reads files, searches the repository, requests commands and drafts findings, bounded by budget and permissions.</span></li>
+        <li><b data-en="Validate" data-es="Validar">Validate</b> — <span data-en="each draft is schema-checked, deduplicated, calibrated against REVIEW_MIN_PUBLISH_CONFIDENCE and compared with the previous run. A model critique may only soften or discard — never strengthen." data-es="cada borrador se valida contra el schema, se deduplica, se calibra contra REVIEW_MIN_PUBLISH_CONFIDENCE y se compara con el run anterior. La crítica del modelo solo puede suavizar o descartar — nunca endurecer.">each draft is schema-checked, deduplicated, calibrated against <code>REVIEW_MIN_PUBLISH_CONFIDENCE</code> and compared with the previous run. A model critique may only soften or discard — never strengthen.</span></li>
+        <li><b data-en="Finalize" data-es="Finalizar">Finalize</b> — <span data-en="a verdict (passed / neutral / failed), a narrative and counts." data-es="un veredicto (passed / neutral / failed), una narrativa y los conteos.">a verdict (<code>passed</code> / <code>neutral</code> / <code>failed</code>), a narrative and counts.</span></li>
+        <li><b data-en="Publish" data-es="Publicar">Publish</b> — <span data-en="summary comment found and updated in place via an embedded marker, plus a check run with annotations — or a pending approval when the gate is on." data-es="comentario de resumen encontrado y actualizado en el lugar vía un marcador embebido, más un check run con anotaciones — o una aprobación pendiente cuando el gate está activo.">summary comment found and updated in place via an embedded marker, plus a check run with annotations — or a pending approval when the gate is on.</span></li>
+      </ol>
+
+      <div class="tw"><table>
+        <thead><tr>
+          <th data-en="Severity" data-es="Severidad">Severity</th>
+          <th data-en="What it means for the check run" data-es="Qué significa para el check run">What it means for the check run</th>
+        </tr></thead>
+        <tbody>
+          <tr><td><span class="sev s-crit"><span class="dot"></span>critical</span></td>
+            <td data-en="Blocks by default. The check fails and the finding is published inline." data-es="Bloquea por defecto. El check falla y el hallazgo se publica inline.">Blocks by default. The check fails and the finding is published inline.</td></tr>
+          <tr><td><span class="sev s-high"><span class="dot"></span>high</span></td>
+            <td data-en="Blocks by default, same as critical. Both are configurable per repository." data-es="Bloquea por defecto, igual que critical. Ambos son configurables por repositorio.">Blocks by default, same as critical. Both are configurable per repository.</td></tr>
+          <tr><td><span class="sev s-med"><span class="dot"></span>medium</span></td>
+            <td data-en="Published, does not block unless you add it to the blocking set." data-es="Se publica, no bloquea salvo que lo agregues al conjunto bloqueante.">Published, does not block unless you add it to the blocking set.</td></tr>
+          <tr><td><span class="sev s-low"><span class="dot"></span>low</span> · <span class="sev" style="color:var(--info)"><span class="dot" style="background:var(--info)"></span>info</span></td>
+            <td data-en="Notes. Kept and shown, never blocking." data-es="Notas. Se conservan y se muestran, nunca bloquean.">Notes. Kept and shown, never blocking.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ============ 04 ARCHITECTURE ============ -->
+    <section id="arquitectura">
+      <div class="sec-head"><span class="sec-num">04</span>
+        <h2 data-en="Architecture" data-es="Arquitectura">Architecture</h2></div>
+      <p class="sub" data-en="An npm-workspaces monorepo. The API, the worker and the CLI share one container: same dependency set, different entrypoint." data-es="Un monorepo con npm workspaces. El API, el worker y el CLI comparten un contenedor: mismas dependencias, distinto entrypoint.">An npm-workspaces monorepo. The API, the worker and the CLI share one container: same dependency set, different entrypoint.</p>
+      <h3 data-en="Packages" data-es="Paquetes">Packages</h3>
+      <div class="tw"><table>
+        <thead><tr><th data-en="Package" data-es="Paquete">Package</th><th data-en="Responsibility" data-es="Responsabilidad">Responsibility</th></tr></thead>
+        <tbody>
+          <tr><td>@acr/config</td><td data-en="Environment schema, typed configuration, logger, workspace paths" data-es="Schema de variables de entorno, configuración tipada, logger, rutas del workspace">Environment schema, typed configuration, logger, workspace paths</td></tr>
+          <tr><td>@acr/shared</td><td data-en="Domain types, ports, finding validation, budgets, prompt security" data-es="Tipos de dominio, ports, validación de hallazgos, presupuestos, seguridad de prompts">Domain types, ports, finding validation, budgets, prompt security</td></tr>
+          <tr><td>@acr/database</td><td data-en="Prisma schema, review store, queries, the seeder" data-es="Schema de Prisma, store de reviews, queries, el seeder">Prisma schema, review store, queries, the seeder</td></tr>
+          <tr><td>@acr/github</td><td data-en="GitHub App auth, read and publish clients, webhook verification" data-es="Auth de GitHub App, clientes de lectura y publicación, verificación de webhooks">GitHub App auth, read and publish clients, webhook verification</td></tr>
+          <tr><td>@acr/sandbox</td><td data-en="Docker and process command runners, workspace confinement" data-es="Runners de comandos Docker y proceso, confinamiento del workspace">Docker and process command runners, workspace confinement</td></tr>
+          <tr><td>@acr/queue</td><td data-en="BullMQ client, job schemas, Redis locks, worker pool" data-es="Cliente BullMQ, schemas de jobs, locks de Redis, pool de workers">BullMQ client, job schemas, Redis locks, worker pool</td></tr>
+          <tr><td>@acr/ai</td><td data-en="LangGraph review graph, provider abstraction, tools, prompts" data-es="Grafo LangGraph del review, abstracción de provider, herramientas, prompts">LangGraph review graph, provider abstraction, tools, prompts</td></tr>
+          <tr><td>@acr/pipeline</td><td data-en="The review use-case, publishing, container wiring" data-es="El caso de uso del review, publicación, wiring del container">The review use-case, publishing, container wiring</td></tr>
+        </tbody>
+      </table></div>
+      <h3 data-en="Apps" data-es="Apps">Apps</h3>
+      <div class="tw"><table>
+        <thead><tr><th data-en="App" data-es="App">App</th><th data-en="Responsibility" data-es="Responsabilidad">Responsibility</th></tr></thead>
+        <tbody>
+          <tr><td>apps/api</td><td data-en="Fastify HTTP API, sessions, SSE event stream, webhook receiver" data-es="API HTTP con Fastify, sesiones, stream SSE de eventos, receptor de webhooks">Fastify HTTP API, sessions, SSE event stream, webhook receiver</td></tr>
+          <tr><td>apps/worker</td><td data-en="BullMQ consumers, review reconciliation, health endpoint on :9100" data-es="Consumidores BullMQ, reconciliación de reviews, endpoint de health en :9100">BullMQ consumers, review reconciliation, health endpoint on :9100</td></tr>
+          <tr><td>apps/web</td><td data-en="Next.js dashboard: repositories, pull requests, runs, live events" data-es="Dashboard Next.js: repositorios, pull requests, runs, eventos en vivo">Next.js dashboard: repositories, pull requests, runs, live events</td></tr>
+          <tr><td>apps/cli</td><td data-en="One-shot review from the terminal, no dashboard needed" data-es="Review de un solo disparo desde la terminal, sin dashboard">One-shot review from the terminal, no dashboard needed</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ============ 05 CONFIGURATION ============ -->
+    <section id="configuracion">
+      <div class="sec-head"><span class="sec-num">05</span>
+        <h2 data-en="Configuration" data-es="Configuración">Configuration</h2></div>
+      <p class="sub" data-en="Every variable is validated in packages/config/src/env.ts. Startup fails with the list of what is wrong instead of booting half-configured, and .env.example documents all of them." data-es="Cada variable se valida en packages/config/src/env.ts. El arranque falla con la lista de lo que está mal en vez de bootear a medias, y .env.example las documenta todas.">Every variable is validated in <code>packages/config/src/env.ts</code>. Startup fails with the list of what is wrong instead of booting half-configured, and <code>.env.example</code> documents all of them.</p>
+      <div class="tw"><table>
+        <thead><tr><th data-en="Variable" data-es="Variable">Variable</th><th data-en="Default" data-es="Default">Default</th><th data-en="Effect" data-es="Efecto">Effect</th></tr></thead>
+        <tbody>
+          <tr><td>AUTH_SECRET</td><td>—</td><td data-en="Session signing key. Required, ≥ 32 chars" data-es="Clave de firma de sesión. Obligatoria, ≥ 32 caracteres">Session signing key. Required, ≥ 32 chars</td></tr>
+          <tr><td>DATABASE_URL</td><td>—</td><td data-en="Postgres connection string" data-es="Cadena de conexión de Postgres">Postgres connection string</td></tr>
+          <tr><td>REDIS_URL</td><td>—</td><td data-en="Optional. Without it the system runs inline: in-process locks, in-memory events" data-es="Opcional. Sin ella el sistema corre inline: locks en proceso y eventos en memoria">Optional. Without it the system runs inline: in-process locks, in-memory events</td></tr>
+          <tr><td>SANDBOX_MODE</td><td>docker</td><td data-en="docker | process | off" data-es="docker | process | off">docker | process | off</td></tr>
+          <tr><td>ALLOW_PROCESS_SANDBOX</td><td>false</td><td data-en="Must be true for process mode: an explicit opt-in to the weaker sandbox" data-es="Debe ser true para el modo process: opt-in explícito al sandbox más débil">Must be <code>true</code> for <code>process</code> mode: an explicit opt-in to the weaker sandbox</td></tr>
+          <tr><td>SANDBOX_NETWORK</td><td>none</td><td data-en="none blocks package installs during checks" data-es="none bloquea instalaciones de paquetes durante los checks"><code>none</code> blocks package installs during checks</td></tr>
+          <tr><td>REVIEW_COMMAND_EXECUTION</td><td>inline</td><td data-en="inline runs checks in the reviewing process; queued dispatches them as worker jobs (needs Redis, and compose sets queued)" data-es="inline corre los checks en el proceso que revisa; queued los despacha como jobs del worker (necesita Redis, y compose usa queued)"><code>inline</code> runs checks in the reviewing process; <code>queued</code> dispatches them as worker jobs (needs Redis, and compose sets <code>queued</code>)</td></tr>
+          <tr><td>LLM_PROVIDER</td><td>openai-compatible</td><td data-en="openai | openrouter | nan-builders | openai-compatible. The named ones carry a default base URL" data-es="openai | openrouter | nan-builders | openai-compatible. Los nombrados traen base URL por defecto">openai | openrouter | nan-builders | openai-compatible. The named ones carry a default base URL</td></tr>
+          <tr><td>LLM_BASE_URL</td><td>—</td><td data-en="Explicit endpoint; overrides the provider preset. Required for openai-compatible" data-es="Endpoint explícito; pisa el preset del provider. Obligatorio para openai-compatible">Explicit endpoint; overrides the provider preset. Required for <code>openai-compatible</code></td></tr>
+          <tr><td>LLM_MODEL</td><td>gpt-4o-mini</td><td data-en="Model id. OpenRouter uses vendor/model, nan.builders uses ids like glm5.3-flash" data-es="Id del modelo. OpenRouter usa vendor/model, nan.builders usa ids como glm5.3-flash">Model id. OpenRouter uses <code>vendor/model</code>, nan.builders uses ids like <code>glm5.3-flash</code></td></tr>
+          <tr><td>REVIEW_MAX_TOKENS</td><td>200000</td><td data-en="Per-review token budget. Hitting it stops the run, it never silently truncates" data-es="Presupuesto de tokens por review. Alcanzarlo detiene el run, nunca trunca en silencio">Per-review token budget. Hitting it stops the run, it never silently truncates</td></tr>
+          <tr><td>REVIEW_MAX_DURATION_MS</td><td>900000</td><td data-en="Per-review wall clock" data-es="Reloj de pared por review">Per-review wall clock</td></tr>
+          <tr><td>REVIEW_MAX_TOOL_CALLS</td><td>60</td><td data-en="Agent loop cap" data-es="Tope del loop del agente">Agent loop cap</td></tr>
+          <tr><td>REVIEW_MIN_PUBLISH_CONFIDENCE</td><td>0.6</td><td data-en="Below it, findings are kept and shown but not published" data-es="Por debajo, los hallazgos se conservan y se muestran pero no se publican">Below it, findings are kept and shown but not published</td></tr>
+          <tr><td>REVIEW_REQUIRE_APPROVAL_FOR_PUBLISH</td><td>false</td><td data-en="Adds the human gate before anything reaches GitHub" data-es="Agrega el gate humano antes de que algo llegue a GitHub">Adds the human gate before anything reaches GitHub</td></tr>
+          <tr><td>API_PUBLIC_URL</td><td>http://localhost:4000</td><td data-en="Used for the dashboard link inside published comments" data-es="Se usa para el link al dashboard dentro de los comentarios publicados">Used for the dashboard link inside published comments</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 data-en="Provider presets" data-es="Presets de provider">Provider presets</h3>
+      <p data-en="All four speak OpenAI Chat Completions, so tool calls and JSON mode behave identically. An explicit base URL always wins; openai-compatible has no default and needs one." data-es="Los cuatro hablan OpenAI Chat Completions, así que tool calls y modo JSON se comportan igual. Un base URL explícito siempre gana; openai-compatible no tiene default y lo necesita.">All four speak OpenAI Chat Completions, so tool calls and JSON mode behave identically. An explicit base URL always wins; <code>openai-compatible</code> has no default and needs one.</p>
+      <pre><code><span class="cmt"># OpenRouter</span>
+<span class="var">LLM_PROVIDER</span>=openrouter
+<span class="var">LLM_API_KEY</span>=sk-or-...
+<span class="var">LLM_MODEL</span>=openai/gpt-4o
+<span class="var">LLM_HTTP_REFERER</span>=https://your-app.example   <span class="cmt"># optional app attribution</span>
+<span class="var">LLM_APP_TITLE</span>=Argus                        <span class="cmt"># optional app attribution</span>
+
+<span class="cmt"># nan.builders</span>
+<span class="var">LLM_PROVIDER</span>=nan-builders
+<span class="var">LLM_API_KEY</span>=sk-...
+<span class="var">LLM_MODEL</span>=glm5.3-flash
+
+<span class="cmt"># Any other gateway, local or hosted</span>
+<span class="var">LLM_PROVIDER</span>=openai-compatible
+<span class="var">LLM_BASE_URL</span>=https://gateway.internal/v1
+<span class="var">LLM_MODEL</span>=my-model</code></pre>
+
+      <h3 data-en="Per-repository policy" data-es="Política por repositorio">Per-repository policy</h3>
+      <p data-en="Stored in the database and editable in the dashboard or via PATCH /repositories/:id/settings. It can narrow or widen the deployment defaults inside the bounds the environment allows: which checks run, deep review, inline findings, summary comment, check run, ignored paths, minimum confidence, blocking severities, the approval gate and the agent's permission set." data-es="Se guarda en la base y se edita en el dashboard o vía PATCH /repositories/:id/settings. Puede acotar o ampliar los defaults del deploy dentro de los límites que permite el entorno: qué checks corren, deep review, hallazgos inline, comentario de resumen, check run, rutas ignoradas, confianza mínima, severidades bloqueantes, el gate de aprobación y el set de permisos del agente.">Stored in the database and editable in the dashboard or via <code>PATCH /repositories/:id/settings</code>. It can narrow or widen the deployment defaults inside the bounds the environment allows: which checks run, deep review, inline findings, summary comment, check run, ignored paths, minimum confidence, blocking severities, the approval gate and the agent's permission set.</p>
+    </section>
+
+    <!-- ============ 06 GITHUB ============ -->
+    <section id="github">
+      <div class="sec-head"><span class="sec-num">06</span>
+        <h2 data-en="Connecting GitHub" data-es="Conectar GitHub">Connecting GitHub</h2></div>
+      <p class="sub" data-en="A GitHub App is the full path: webhooks and installation tokens. A personal access token is the quick path: reviews without webhooks." data-es="Una GitHub App es el camino completo: webhooks y tokens de instalación. Un personal access token es el camino rápido: reviews sin webhooks.">A GitHub App is the full path: webhooks and installation tokens. A personal access token is the quick path: reviews without webhooks.</p>
+
+      <h3 data-en="GitHub App (recommended)" data-es="GitHub App (recomendado)">GitHub App (recommended)</h3>
+      <div class="tw"><table>
+        <thead><tr><th data-en="Where" data-es="Dónde">Where</th><th data-en="What to set" data-es="Qué poner">What to set</th></tr></thead>
+        <tbody>
+          <tr><td>github.com/settings/apps/new</td><td data-en="Homepage URL, and a Webhook URL pointing at your deployment" data-es="Homepage URL, y una Webhook URL apuntando a tu deploy">Homepage URL, and a Webhook URL pointing at your deployment</td></tr>
+          <tr><td data-en="Permissions" data-es="Permisos">Permissions</td><td data-en="Contents: read · Issues: read &amp; write · Pull requests: read &amp; write · Checks: read &amp; write · Metadata: read" data-es="Contents: read · Issues: read &amp; write · Pull requests: read &amp; write · Checks: read &amp; write · Metadata: read">Contents: read · Issues: read &amp; write · Pull requests: read &amp; write · Checks: read &amp; write · Metadata: read</td></tr>
+          <tr><td data-en="Events" data-es="Eventos">Events</td><td>Pull request</td></tr>
+          <tr><td data-en="Values into .env" data-es="Valores al .env">Values into .env</td><td><code>GITHUB_APP_ID</code> · <code>GITHUB_APP_SLUG</code> · <code>GITHUB_PRIVATE_KEY_PATH</code> · <code>GITHUB_WEBHOOK_SECRET</code></td></tr>
+        </tbody>
+      </table></div>
+      <div class="note">
+        <b data-en="Add repositories with Sync, not Add." data-es="Agregá repositorios con Sync, no con Add.">Add repositories with Sync, not Add.</b>
+        <span data-en=" “Add repository” records the repo with no installation, so the platform looks for GITHUB_TOKEN and fails without one. Sync imports the installation's list and keeps the installation id, which is what mints tokens." data-es=" “Add repository” registra el repo sin instalación, así que la plataforma busca GITHUB_TOKEN y falla si no está. Sync importa la lista de la instalación y conserva el installation id, que es lo que permite mintear tokens."> “Add repository” records the repo with no installation, so the platform looks for <code>GITHUB_TOKEN</code> and fails without one. Sync imports the installation's list and keeps the installation id, which is what mints tokens.</span>
+      </div>
+
+      <h3 data-en="Personal access token" data-es="Personal access token">Personal access token</h3>
+      <p data-en="A classic token with the repo scope, or a fine-grained token with Contents: read, Issues: read &amp; write, Pull requests: read &amp; write, Checks: read &amp; write. Put it in GITHUB_TOKEN. It cannot receive webhooks, so reviews are triggered from the dashboard, the CLI or the API." data-es="Un token clásico con scope repo, o uno fine-grained con Contents: read, Issues: read &amp; write, Pull requests: read &amp; write, Checks: read &amp; write. Va en GITHUB_TOKEN. No puede recibir webhooks, así que los reviews se disparan desde el dashboard, el CLI o la API.">A classic token with the <code>repo</code> scope, or a fine-grained token with Contents: read, Issues: read &amp; write, Pull requests: read &amp; write, Checks: read &amp; write. Put it in <code>GITHUB_TOKEN</code>. It cannot receive webhooks, so reviews are triggered from the dashboard, the CLI or the API.</p>
+
+      <h3 data-en="Local webhook testing" data-es="Probar webhooks en local">Local webhook testing</h3>
+      <pre><code><span class="cmt"># expose the API (port 4000, not the web) and point the App's Webhook URL at:</span>
+<span class="cmt">#   https://&lt;your-tunnel&gt;/github/webhooks</span>
+cloudflared tunnel --url http://localhost:4000   <span class="cmt"># or ngrok http 4000</span></code></pre>
+      <p data-en="Saving the Webhook URL makes GitHub send a ping. A bad signature answers 401, a repeated delivery answers duplicate — that is the idempotency working, not an error. Redeliver from the App’s Advanced tab to see it." data-es="Al guardar la Webhook URL, GitHub manda un ping. Una firma inválida responde 401, una entrega repetida responde duplicate — eso es la idempotencia funcionando, no un error. Usá Redeliver en la pestaña Advanced de la App para verlo.">Saving the Webhook URL makes GitHub send a ping. A bad signature answers 401, a repeated delivery answers <code>duplicate</code> — that is the idempotency working, not an error. Redeliver from the App’s Advanced tab to see it.</p>
+    </section>
+
+    <!-- ============ 07 USING IT ============ -->
+    <section id="usarlo">
+      <div class="sec-head"><span class="sec-num">07</span>
+        <h2 data-en="Using it" data-es="Usarlo">Using it</h2></div>
+      <p class="sub" data-en="Three doors to the same pipeline: the dashboard, the CLI, and HTTP." data-es="Tres puertas al mismo pipeline: el dashboard, el CLI y HTTP.">Three doors to the same pipeline: the dashboard, the CLI, and HTTP.</p>
+
+      <h3 data-en="Dashboard" data-es="Panel">Dashboard</h3>
+      <ul>
+        <li data-en="Repositories — every repository the platform can review, with its counts, plus Add and Sync." data-es="Repositories — cada repositorio que la plataforma puede revisar, con sus conteos, más Add y Sync."><b>Repositories</b> — every repository the platform can review, with its counts, plus Add and Sync.</li>
+        <li data-en="Repository detail — Trigger a review by number, the review policy, and access management." data-es="Detalle del repo — Trigger a review por número, la política de review y la gestión de accesos."><b>Repository detail</b> — Trigger a review by number, the review policy, and access management.</li>
+        <li data-en="Pull requests — review history per PR, Sync from GitHub, Review now." data-es="Pull requests — historial de reviews por PR, Sync from GitHub, Review now."><b>Pull requests</b> — review history per PR, Sync from GitHub, Review now.</li>
+        <li data-en="Reviews — status, plan, usage, cost, node trace, findings, check runs, live events, approvals, SARIF export." data-es="Reviews — estado, plan, uso, costo, traza de nodos, hallazgos, check runs, eventos en vivo, aprobaciones, export SARIF."><b>Reviews</b> — status, plan, usage, cost, node trace, findings, check runs, live events, approvals, SARIF export.</li>
+      </ul>
+
+      <h3 data-en="CLI" data-es="CLI">CLI</h3>
+      <pre><code>npm run review -- --repo owner/name --pr 42            <span class="cmt"># full review, no dashboard, no Redis</span>
+npm run review -- --repo owner/name --pr 42 --no-checks  <span class="cmt"># fastest: AI pipeline only</span>
+npm run review -- --repo owner/name --pr 42 --publish    <span class="cmt"># write the comment and check run</span></code></pre>
+      <div class="tw"><table>
+        <thead><tr><th data-en="Flag" data-es="Flag">Flag</th><th data-en="Effect" data-es="Efecto">Effect</th></tr></thead>
+        <tbody>
+          <tr><td>--repo, --repository</td><td data-en="Repository as owner/name (required)" data-es="Repositorio como owner/name (obligatorio)">Repository as <code>owner/name</code> (required)</td></tr>
+          <tr><td>--pr, --number</td><td data-en="Pull request number (required)" data-es="Número de pull request (obligatorio)">Pull request number (required)</td></tr>
+          <tr><td>--publish</td><td data-en="Post the summary, inline findings and check run. Off by default: a local trial must not surprise the author" data-es="Publica el resumen, los hallazgos inline y el check run. Apagado por defecto: una prueba local no debe sorprender al autor">Post the summary, inline findings and check run. <b>Off by default</b>: a local trial must not surprise the author</td></tr>
+          <tr><td>--no-checks</td><td data-en="Skip test/lint/typecheck execution" data-es="Saltea la ejecución de test/lint/typecheck">Skip test/lint/typecheck execution</td></tr>
+          <tr><td>--model &lt;name&gt;</td><td data-en="Override LLM_MODEL for this run" data-es="Pisa LLM_MODEL para esta corrida">Override <code>LLM_MODEL</code> for this run</td></tr>
+          <tr><td>--fresh</td><td data-en="Force a new run for the same head instead of reusing it" data-es="Forzar un run nuevo para el mismo head en vez de reusarlo">Force a new run for the same head instead of reusing it</td></tr>
+          <tr><td>--json · --quiet</td><td data-en="Machine-readable result · only the final result" data-es="Resultado legible por máquina · solo el resultado final">Machine-readable result · only the final result</td></tr>
+        </tbody>
+      </table></div>
+      <p data-en="The first run reads the repository and the pull request straight from GitHub and records both, so a PR shows up in the dashboard without waiting for a webhook. Exit code is non-zero when the run fails, so it works as a CI step." data-es="La primera corrida lee el repositorio y el pull request directo de GitHub y registra ambos, así un PR aparece en el dashboard sin esperar un webhook. El exit code es distinto de cero cuando el run falla, así sirve como paso de CI.">The first run reads the repository and the pull request straight from GitHub and records both, so a PR shows up in the dashboard without waiting for a webhook. Exit code is non-zero when the run fails, so it works as a CI step.</p>
+    </section>
+
+    <!-- ============ 08 API ============ -->
+    <section id="api">
+      <div class="sec-head"><span class="sec-num">08</span>
+        <h2 data-en="HTTP API" data-es="API HTTP">HTTP API</h2></div>
+      <p class="sub" data-en="Everything the dashboard uses, in plain HTTP with a session cookie. Routes are not prefixed: the API is either served on its own host or routed by your ingress." data-es="Todo lo que usa el dashboard, en HTTP plano con cookie de sesión. Las rutas no llevan prefijo: el API se sirve en su propio host o lo rutea tu ingress.">Everything the dashboard uses, in plain HTTP with a session cookie. Routes are not prefixed: the API is either served on its own host or routed by your ingress.</p>
+      <div class="tw"><table>
+        <thead><tr><th data-en="Method" data-es="Método">Method</th><th data-en="Path" data-es="Ruta">Path</th><th data-en="Notes" data-es="Notas">Notes</th></tr></thead>
+        <tbody>
+          <tr><td>GET</td><td>/health</td><td data-en="Never fails, never rate limited: version, uptime, dependency probes" data-es="Nunca falla, nunca con rate limit: versión, uptime, sondas de dependencias">Never fails, never rate limited: version, uptime, dependency probes</td></tr>
+          <tr><td>GET</td><td>/ready</td><td data-en="200 only when the database answers; also lists configuration issues" data-es="200 solo cuando la base responde; además lista problemas de configuración">200 only when the database answers; also lists configuration issues</td></tr>
+          <tr><td>POST</td><td>/auth/login</td><td data-en="Rate limited, sets the acr_session cookie" data-es="Con rate limit, setea la cookie acr_session">Rate limited, sets the <code>acr_session</code> cookie</td></tr>
+          <tr><td>GET</td><td>/auth/me</td><td data-en="Current user, or 401" data-es="Usuario actual, o 401">Current user, or 401</td></tr>
+          <tr><td>GET POST</td><td>/repositories</td><td data-en="List what you can see; add a repository (admin)" data-es="Lista lo que podés ver; agregar repositorio (admin)">List what you can see; add a repository (admin)</td></tr>
+          <tr><td>POST</td><td>/repositories/sync</td><td data-en="Import the App installation's repository list" data-es="Importa la lista de repositorios de la instalación de la App">Import the App installation's repository list</td></tr>
+          <tr><td>PATCH</td><td>/repositories/:id/settings</td><td data-en="Review policy for one repository" data-es="Política de review de un repositorio">Review policy for one repository</td></tr>
+          <tr><td>GET PUT DELETE</td><td>/repositories/:id/access</td><td data-en="Grant, replace or revoke a user's access" data-es="Otorgar, reemplazar o revocar el acceso de un usuario">Grant, replace or revoke a user's access</td></tr>
+          <tr><td>GET</td><td>/pull-requests</td><td data-en="Filterable by repository, author, state" data-es="Filtrable por repositorio, autor, estado">Filterable by repository, author, state</td></tr>
+          <tr><td>POST</td><td>/pull-requests/:id/review</td><td data-en="Trigger a review; returns the run id immediately. Needs triage" data-es="Dispara un review; devuelve el run id al instante. Requiere triage">Trigger a review; returns the run id immediately. Needs triage</td></tr>
+          <tr><td>POST</td><td>/reviews</td><td data-en="Create a run by repository + number. Same triage rule as above" data-es="Crea un run por repositorio + número. Misma regla de triage que arriba">Create a run by repository + number. Same triage rule as above</td></tr>
+          <tr><td>GET</td><td>/reviews/:id</td><td data-en="Status, plan, usage, cost, node trace" data-es="Estado, plan, uso, costo, traza de nodos">Status, plan, usage, cost, node trace</td></tr>
+          <tr><td>GET</td><td>/reviews/:id/findings</td><td data-en="Paginated, filterable by severity and category" data-es="Paginado, filtrable por severidad y categoría">Paginated, filterable by severity and category</td></tr>
+          <tr><td>POST</td><td>/reviews/:id/publish · /reject</td><td data-en="Decide the pending approval and publish the stored snapshot, or cancel" data-es="Decidir la aprobación pendiente y publicar el snapshot guardado, o cancelar">Decide the pending approval and publish the stored snapshot, or cancel</td></tr>
+          <tr><td>POST</td><td>/reviews/:id/retry</td><td data-en="New run for the same head with a fresh idempotency key. Needs triage" data-es="Run nuevo para el mismo head con clave de idempotencia nueva. Requiere triage">New run for the same head with a fresh idempotency key. Needs triage</td></tr>
+          <tr><td>GET</td><td>/reviews/:id/events</td><td data-en="Server-Sent Events: replay from Last-Event-ID, then tail live" data-es="Server-Sent Events: replay desde Last-Event-ID y después tail en vivo">Server-Sent Events: replay from <code>Last-Event-ID</code>, then tail live</td></tr>
+          <tr><td>POST</td><td>/github/webhooks</td><td data-en="Signature-verified, delivery-deduplicated" data-es="Verificado por firma, deduplicado por delivery">Signature-verified, delivery-deduplicated</td></tr>
+        </tbody>
+      </table></div>
+      <p data-en="Errors are one envelope — { code, message, details, requestId } — with codes mirroring the status: validation_error, unauthorized, forbidden, not_found, conflict, internal_error. Every response carries x-request-id, which is also the key in the logs." data-es="Los errores son un solo envelope — { code, message, details, requestId } — con códigos que reflejan el status: validation_error, unauthorized, forbidden, not_found, conflict, internal_error. Cada respuesta lleva x-request-id, que también es la clave en los logs.">Errors are one envelope — <code>{ code, message, details, requestId }</code> — with codes mirroring the status: <code>validation_error</code>, <code>unauthorized</code>, <code>forbidden</code>, <code>not_found</code>, <code>conflict</code>, <code>internal_error</code>. Every response carries <code>x-request-id</code>, which is also the key in the logs.</p>
+    </section>
+
+    <!-- ============ 09 SANDBOX ============ -->
+    <section id="seguridad">
+      <div class="sec-head"><span class="sec-num">09</span>
+        <h2 data-en="Sandbox, permissions and cost" data-es="Sandbox, permisos y costo">Sandbox, permissions and cost</h2></div>
+      <p class="sub" data-en="The model never decides what is safe. Budgets, permissions and publishing are computed from configuration, and the agent operates inside those bounds." data-es="El modelo nunca decide qué es seguro. Presupuestos, permisos y publicación se calculan desde la configuración, y el agente opera dentro de esos límites.">The model never decides what is safe. Budgets, permissions and publishing are computed from configuration, and the agent operates inside those bounds.</p>
+
+      <h3 data-en="Sandbox modes" data-es="Modos de sandbox">Sandbox modes</h3>
+      <div class="tw"><table>
+        <thead><tr><th>Mode</th><th data-en="What it gives you" data-es="Qué te da">What it gives you</th></tr></thead>
+        <tbody>
+          <tr><td>docker</td><td data-en="Default. Container with CPU, memory and PID limits, a writable per-run workspace, --network none by default, --cap-drop ALL, no-new-privileges and a command allow-list" data-es="Default. Contenedor con límites de CPU, memoria y PIDs, workspace escribible por run, --network none por defecto, --cap-drop ALL, no-new-privileges y allow-list de comandos">Default. Container with CPU, memory and PID limits, a writable per-run workspace, <code>--network none</code> by default, <code>--cap-drop ALL</code>, <code>no-new-privileges</code> and a command allow-list</td></tr>
+          <tr><td>process</td><td data-en="Runs on the host. Requires ALLOW_PROCESS_SANDBOX=true, an explicit opt-in, and is meant for environments that cannot run containers" data-es="Corre en el host. Requiere ALLOW_PROCESS_SANDBOX=true, un opt-in explícito, y es para entornos que no pueden correr contenedores">Runs on the host. Requires <code>ALLOW_PROCESS_SANDBOX=true</code>, an explicit opt-in, and is meant for environments that cannot run containers</td></tr>
+          <tr><td>off</td><td data-en="No command execution at all. The review reasons from the diff and the files it can read" data-es="Ninguna ejecución de comandos. El review razona desde el diff y los archivos que puede leer">No command execution at all. The review reasons from the diff and the files it can read</td></tr>
+        </tbody>
+      </table></div>
+      <p data-en="Workspace confinement is enforced with real paths, so a symlink cannot escape the run's directory, and the command allow-list is derived from the repository manifest — the model can request a script, not invent a command." data-es="El confinamiento del workspace se aplica con rutas reales, así un symlink no puede escapar del directorio del run, y la allow-list de comandos se deriva del manifiesto del repositorio — el modelo puede pedir un script, no inventar un comando.">Workspace confinement is enforced with real paths, so a symlink cannot escape the run's directory, and the command allow-list is derived from the repository manifest — the model can request a script, not invent a command.</p>
+
+      <h3 data-en="Prompt injection" data-es="Prompt injection">Prompt injection</h3>
+      <p data-en="Pull request text is untrusted input from strangers. It is wrapped in a per-request random boundary, injection signals are detected and surfaced, and the instruction hints field is the repository owner's channel, not the author's." data-es="El texto del pull request es input no confiable de desconocidos. Se envuelve en un boundary aleatorio por request, se detectan y exponen señales de inyección, y el campo de instruction hints es del dueño del repositorio, no del autor.">Pull request text is untrusted input from strangers. It is wrapped in a per-request random boundary, injection signals are detected and surfaced, and the instruction hints field is the repository owner's channel, not the author's.</p>
+
+      <h3 data-en="Cost" data-es="Costo">Cost</h3>
+      <ul>
+        <li data-en="Every run records tokens in, tokens out and an estimated cost, visible per run and per repository." data-es="Cada run registra tokens de entrada, de salida y un costo estimado, visible por run y por repositorio.">Every run records tokens in, tokens out and an estimated cost, visible per run and per repository.</li>
+        <li data-en="Budget limits (tokens, wall clock, tool calls) stop a run instead of letting it drift; the run records that it hit the limit." data-es="Los límites de presupuesto (tokens, tiempo, tool calls) detienen un run en vez de dejarlo derivar; el run registra que alcanzó el límite.">Budget limits (tokens, wall clock, tool calls) stop a run instead of letting it drift; the run records that it hit the limit.</li>
+        <li data-en="A single surviving finding skips the adversarial critique — a deliberate cost decision, not an omission." data-es="Un único hallazgo sobreviviente saltea la crítica adversarial — una decisión de costo deliberada, no una omisión.">A single surviving finding skips the adversarial critique — a deliberate cost decision, not an omission.</li>
+      </ul>
+    </section>
+
+    <!-- ============ 10 DEPLOYMENT ============ -->
+    <section id="despliegue">
+      <div class="sec-head"><span class="sec-num">10</span>
+        <h2 data-en="Deployment" data-es="Despliegue">Deployment</h2></div>
+      <p class="sub" data-en="docker-compose.yml defines postgres, redis, migrate, api, worker and web. Four commands and the stack is up." data-es="docker-compose.yml define postgres, redis, migrate, api, worker y web. Cuatro comandos y el stack está arriba.">docker-compose.yml defines postgres, redis, migrate, api, worker and web. Four commands and the stack is up.</p>
+      <pre><code>docker compose build
+docker compose up -d
+docker compose logs -f api worker
+<span class="cmt"># health:  GET /health (never fails)   ·   GET /ready (gates on the database)</span></code></pre>
+      <ul>
+        <li data-en="One backend image with api and worker targets: same dependency set, different entrypoint." data-es="Una imagen backend con targets api y worker: mismas dependencias, distinto entrypoint.">One backend image with <code>api</code> and <code>worker</code> targets: same dependency set, different entrypoint.</li>
+        <li data-en="The migrate service runs prisma migrate deploy and gates the API with service_completed_successfully, so nothing serves traffic on an old schema." data-es="El servicio migrate corre prisma migrate deploy y bloquea el API con service_completed_successfully, así nada sirve tráfico con un schema viejo.">The <code>migrate</code> service runs <code>prisma migrate deploy</code> and gates the API with <code>service_completed_successfully</code>, so nothing serves traffic on an old schema.</li>
+        <li data-en="api and worker share the workspaces volume — that is what makes REVIEW_COMMAND_EXECUTION=queued work: the worker opens the exact path the API created." data-es="api y worker comparten el volumen workspaces — eso es lo que hace funcionar REVIEW_COMMAND_EXECUTION=queued: el worker abre el path exacto que creó el API."><code>api</code> and <code>worker</code> share the <code>workspaces</code> volume — that is what makes <code>REVIEW_COMMAND_EXECUTION=queued</code> work: the worker opens the exact path the API created.</li>
+        <li data-en="Scale by adding workers; BullMQ plus the per-pull-request lock makes that safe." data-es="Escalá agregando workers; BullMQ más el lock por pull request lo hacen seguro.">Scale by adding workers; BullMQ plus the per-pull-request lock makes that safe.</li>
+        <li data-en="The worker image carries the Docker CLI. Mount /var/run/docker.sock only if you accept that a container can then control the host daemon; it is commented out for that reason." data-es="La imagen del worker trae el CLI de Docker. Montá /var/run/docker.sock solo si aceptás que un contenedor pueda controlar el daemon del host; está comentado por eso.">The worker image carries the Docker CLI. Mount <code>/var/run/docker.sock</code> only if you accept that a container can then control the host daemon; it is commented out for that reason.</li>
+      </ul>
+
+      <h3 data-en="Before you call it production" data-es="Antes de llamarlo producción">Before you call it production</h3>
+      <ul class="check">
+        <li><span class="box"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2.6 7.4l2.9 2.9L11.4 3.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span data-en="Set NODE_ENV=production explicitly. Compose substitutes it from your .env, so a container run inherits development — and the production invariant checks only run when it is production." data-es="Poné NODE_ENV=production explícito. Compose lo toma de tu .env, así que un run en contenedor hereda development — y los chequeos de invariantes de producción solo corren cuando es production.">Set <code>NODE_ENV=production</code> explicitly. Compose substitutes it from your <code>.env</code>, so a container run inherits <code>development</code> — and the production invariant checks only run when it is <code>production</code>.</span></li>
+        <li><span class="box"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2.6 7.4l2.9 2.9L11.4 3.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span data-en="Mount the App private key and point GITHUB_PRIVATE_KEY_PATH at the in-container path, or pass GITHUB_PRIVATE_KEY inline." data-es="Montá la private key de la App y apuntá GITHUB_PRIVATE_KEY_PATH al path dentro del contenedor, o pasá GITHUB_PRIVATE_KEY inline.">Mount the App private key and point <code>GITHUB_PRIVATE_KEY_PATH</code> at the in-container path, or pass <code>GITHUB_PRIVATE_KEY</code> inline.</span></li>
+        <li><span class="box"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2.6 7.4l2.9 2.9L11.4 3.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span data-en="Set COOKIE_SECURE=true behind TLS, and keep real secrets in the environment rather than a committed file. The API already honors X-Forwarded-* through trustProxy." data-es="Poné COOKIE_SECURE=true detrás de TLS, y mantené los secretos reales en el entorno en vez de un archivo commiteado. El API ya respeta X-Forwarded-* vía trustProxy.">Set <code>COOKIE_SECURE=true</code> behind TLS, and keep real secrets in the environment rather than a committed file. The API already honors <code>X-Forwarded-*</code> through <code>trustProxy</code>.</span></li>
+        <li><span class="box"><svg viewBox="0 0 14 14" aria-hidden="true"><path d="M2.6 7.4l2.9 2.9L11.4 3.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span data-en="Back up Postgres: the volumes hold every run, finding and approval. Redis needs its AOF, already enabled in compose, so accepted reviews survive a restart." data-es="Hacé backup de Postgres: los volúmenes guardan cada run, hallazgo y aprobación. Redis necesita su AOF, ya habilitado en compose, para que los reviews aceptados sobrevivan un reinicio.">Back up Postgres: the volumes hold every run, finding and approval. Redis needs its AOF, already enabled in compose, so accepted reviews survive a restart.</span></li>
+      </ul>
+    </section>
+
+    <!-- ============ 11 TESTING ============ -->
+    <section id="tests">
+      <div class="sec-head"><span class="sec-num">11</span>
+        <h2 data-en="Testing" data-es="Testing">Testing</h2></div>
+      <p class="sub" data-en="One command runs everything that is expected to pass." data-es="Un comando corre todo lo que se espera que pase.">One command runs everything that is expected to pass.</p>
+      <pre><code>npm run verify        <span class="cmt"># typecheck + typecheck:tests + lint + all test projects</span>
+npm run test:unit     <span class="cmt"># no database needed</span>
+npm run test:integration
+npm run test:e2e
+npm run test:e2e:web  <span class="cmt"># Playwright against the dashboard</span></code></pre>
+      <div class="note warn">
+        <b data-en="Don't run the suite while the stack is up." data-es="No corras el suite con el stack arriba.">Don’t run the suite while the stack is up.</b>
+        <span data-en=" The e2e suite drives a review in-process against the same Redis the containers use, so a live worker can hold the pull-request lock and the test's review comes back skipped / already_running. Stop the app containers first, or give the tests their own Redis." data-es=" El suite e2e corre un review en proceso contra el mismo Redis que usan los contenedores, así que un worker vivo puede sostener el lock del pull request y el review del test vuelve skipped / already_running. Pará los contenedores de app primero, o dale a los tests su propio Redis."> The e2e suite drives a review in-process against the same Redis the containers use, so a live worker can hold the pull-request lock and the test’s review comes back <code>skipped / already_running</code>. Stop the app containers first, or give the tests their own Redis.</span>
+      </div>
+      <p data-en="The database-backed suites read the seeded fixtures, so run npm run db:seed once after a fresh volume. A review is a real HTTP and database flow in e2e, not a mocked one." data-es="Los suites que usan base leen los fixtures del seed, así que corré npm run db:seed una vez después de un volumen nuevo. En e2e un review es un flujo real de HTTP y base, no mockeado.">The database-backed suites read the seeded fixtures, so run <code>npm run db:seed</code> once after a fresh volume. A review is a real HTTP and database flow in e2e, not a mocked one.</p>
+    </section>
+
+    <!-- ============ 12 TROUBLESHOOTING ============ -->
+    <section id="problemas">
+      <div class="sec-head"><span class="sec-num">12</span>
+        <h2 data-en="Troubleshooting" data-es="Problemas">Troubleshooting</h2></div>
+      <p class="sub" data-en="Real failures, and what they actually mean." data-es="Fallas reales, y qué significan de verdad.">Real failures, and what they actually mean.</p>
+      <div class="tw"><table>
+        <thead><tr><th data-en="Symptom" data-es="Síntoma">Symptom</th><th data-en="Cause and fix" data-es="Causa y arreglo">Cause and fix</th></tr></thead>
+        <tbody>
+          <tr><td data-en="table does not exist" data-es="table does not exist">table does not exist</td><td data-en="Migrations never ran. npm run db:migrate before booting." data-es="Nunca corriste migraciones. npm run db:migrate antes de arrancar.">Migrations never ran. <code>npm run db:migrate</code> before booting.</td></tr>
+          <tr><td data-en="Environment variable not found: DATABASE_URL" data-es="Environment variable not found: DATABASE_URL">Environment variable not found: DATABASE_URL</td><td data-en="The Prisma CLI reads the .env from its working directory. The root scripts run it from the repo root with an explicit schema for exactly this reason; run them from the root." data-es="El CLI de Prisma lee el .env desde su directorio de trabajo. Los scripts de la raíz lo corren desde la raíz con schema explícito justo por esto; corrélos desde la raíz.">The Prisma CLI reads the <code>.env</code> from its working directory. The root scripts run it from the repo root with an explicit schema for exactly this reason; run them from the root.</td></tr>
+          <tr><td data-en="Cannot find module '@acr/…' on build" data-es="Cannot find module '@acr/…' al buildear">Cannot find module '@acr/…' on build</td><td data-en="Stale *.tsbuildinfo next to a missing dist: tsc -b believes the projects are current and emits nothing. Delete the tsbuildinfo, or use the package's clean script, which now removes both." data-es="*.tsbuildinfo viejo junto a un dist ausente: tsc -b cree que los proyectos están al día y no emite nada. Borrá los tsbuildinfo, o usá el clean del paquete, que ahora borra ambos.">Stale <code>*.tsbuildinfo</code> next to a missing <code>dist</code>: <code>tsc -b</code> believes the projects are current and emits nothing. Delete the tsbuildinfo, or use the package’s <code>clean</code> script, which now removes both.</td></tr>
+          <tr><td data-en="Repository has no GitHub App installation" data-es="Repository has no GitHub App installation">Repository has no GitHub App installation</td><td data-en="The row came from Add repository (no installation) and GITHUB_TOKEN is empty. Sync the repository, or set a token." data-es="La fila vino de Add repository (sin instalación) y GITHUB_TOKEN está vacío. Hacé Sync del repositorio, o poné un token.">The row came from <b>Add repository</b> (no installation) and <code>GITHUB_TOKEN</code> is empty. Sync the repository, or set a token.</td></tr>
+          <tr><td data-en="api exits with 'unable to determine transport target for pino-pretty'" data-es="el api muere con 'unable to determine transport target for pino-pretty'">api exits with <code>pino-pretty</code> error</td><td data-en="LOG_PRETTY=true in an image without dev dependencies. The logger falls back to JSON and warns; set LOG_PRETTY=false." data-es="LOG_PRETTY=true en una imagen sin devDependencies. El logger cae a JSON y avisa; poné LOG_PRETTY=false."><code>LOG_PRETTY=true</code> in an image without dev dependencies. The logger falls back to JSON and warns; set <code>LOG_PRETTY=false</code>.</td></tr>
+          <tr><td data-en="Web build fails on /_global-error" data-es="El build de web falla en /_global-error">Web build fails on <code>/_global-error</code></td><td data-en="next build ran with NODE_ENV=development. The image sets production for the build step; if you build by hand, do the same." data-es="next build corrió con NODE_ENV=development. La imagen pone production para el build; si construís a mano, hacé lo mismo."><code>next build</code> ran with <code>NODE_ENV=development</code>. The image sets production for the build step; if you build by hand, do the same.</td></tr>
+          <tr><td data-en="Review stuck in QUEUED" data-es="Review trabado en QUEUED">Review stuck in <code>QUEUED</code></td><td data-en="Its job is not in the queue. The worker reconciles on start: it re-dispatches QUEUED runs past the threshold that have no live job, so restart the worker once." data-es="Su job no está en la cola. El worker reconcilia al arrancar: re-despacha los runs QUEUED que pasaron el umbral y no tienen job vivo, así que reiniciá el worker una vez.">Its job is not in the queue. The worker reconciles on start: it re-dispatches <code>QUEUED</code> runs past the threshold that have no live job, so restart the worker once.</td></tr>
+          <tr><td data-en="db:seed fails on user email" data-es="db:seed falla por email de usuario">db:seed fails on user email</td><td data-en="Older builds upserted the admin by a fixed id and collided with the bootstrap account. Current code adopts the id the email already has." data-es="Versiones viejas hacían upsert del admin por id fijo y chocaban con la cuenta del bootstrap. El código actual adopta el id que el email ya tiene.">Older builds upserted the admin by a fixed id and collided with the bootstrap account. Current code adopts the id the email already has.</td></tr>
+          <tr><td data-en="ssh / tunnel shows 401 on the webhook" data-es="el túnel muestra 401 en el webhook">401 on the webhook</td><td data-en="Signature mismatch: GITHUB_WEBHOOK_SECRET must be exactly the App's secret. Also point the tunnel at the API (4000), not the web (3000)." data-es="Firma que no coincide: GITHUB_WEBHOOK_SECRET debe ser exactamente el secret de la App. Y apuntá el túnel al API (4000), no al web (3000).">Signature mismatch: <code>GITHUB_WEBHOOK_SECRET</code> must be exactly the App’s secret. Also point the tunnel at the API (4000), not the web (3000).</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ============ 13 LIMITS ============ -->
+    <section id="limites">
+      <div class="sec-head"><span class="sec-num">13</span>
+        <h2 data-en="Known limits" data-es="Límites conocidos">Known limits</h2></div>
+      <p class="sub" data-en="What this does not do yet, stated plainly." data-es="Lo que esto todavía no hace, dicho sin vueltas.">What this does not do yet, stated plainly.</p>
+      <ul>
+        <li data-en="A review is a model's reading of your code. Evidence is required for blocking findings and the checks give ground truth, but a finding is a claim to verify, not a verdict you delegate." data-es="Un review es la lectura de un modelo sobre tu código. La evidencia es obligatoria para los hallazgos bloqueantes y los checks dan verdad de terreno, pero un hallazgo es una afirmación a verificar, no un veredicto que delegás."><b>A review is a model’s reading of your code.</b> Evidence is required for blocking findings and the checks give ground truth, but a finding is a claim to verify, not a verdict you delegate.</li>
+        <li data-en="A re-review reports a delta: it never claims a previous finding was fixed, only that this run did not raise it again." data-es="Un re-review reporta un delta: nunca afirma que un hallazgo previo se arregló, solo que este run no lo volvió a levantar."><b>A re-review reports a delta:</b> it never claims a previous finding was fixed, only that this run did not raise it again.</li>
+        <li data-en="Checks are npm-shaped. A repository whose scripts live elsewhere gets the AI review without the sandboxed checks." data-es="Los checks son de forma npm. Un repositorio cuyos scripts viven en otro lado recibe el review de IA sin los checks en sandbox."><b>Checks are npm-shaped.</b> A repository whose scripts live elsewhere gets the AI review without the sandboxed checks.</li>
+        <li data-en="SARIF export is generated by the dashboard from a run's findings; uploading it to code scanning is your pipeline's job, not automatic." data-es="El export SARIF lo genera el dashboard desde los hallazgos de un run; subirlo a code scanning es trabajo de tu pipeline, no automático."><b>SARIF export</b> is generated by the dashboard from a run’s findings; uploading it to code scanning is your pipeline’s job, not automatic.</li>
+        <li data-en="TLS, ingress, secret management and database backups are deployment concerns this repository does not ship." data-es="TLS, ingress, gestión de secretos y backups de base son temas de despliegue que este repositorio no trae."><b>TLS, ingress, secret management and database backups</b> are deployment concerns this repository does not ship.</li>
+      </ul>
+    </section>
+
+    <footer>
+      <div class="frow">
+        <span class="mono">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.2" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="12" cy="12" r="4.6" fill="currentColor"/></svg>
+          ARGUS · <span data-en="self-hosted AI pull-request reviewer" data-es="revisor de pull requests con IA, self-hosted">self-hosted AI pull-request reviewer</span>
+        </span>
+        <span class="mono" data-en="Built on LangGraph · Fastify · Next.js · Prisma · BullMQ" data-es="Hecho con LangGraph · Fastify · Next.js · Prisma · BullMQ">Built on LangGraph · Fastify · Next.js · Prisma · BullMQ</span>
+      </div>
+    </footer>
+
+  </main>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var buttons = Array.prototype.slice.call(document.querySelectorAll('.lang button'));
+  // Both attributes live on the same element and JS swaps its text, so nothing
+  // is hidden with CSS: authored content only, never user input.
+  var TITLE = { en: 'Argus — Documentation', es: 'Argus — Documentación' };
+
+  function apply(lang) {
+    root.setAttribute('data-lang', lang);
+    root.setAttribute('lang', lang);
+    document.title = TITLE[lang] || TITLE.en;
+    buttons.forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-set') === lang));
+    });
+    var attr = lang === 'es' ? 'data-es' : 'data-en';
+    Array.prototype.forEach.call(document.querySelectorAll('[' + attr + ']'), function (el) {
+      var value = el.getAttribute(attr);
+      if (value !== null) { el.textContent = value; }
+    });
+  }
+
+  buttons.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var lang = b.getAttribute('data-set');
+      apply(lang);
+      try { localStorage.setItem('argus-docs-lang', lang); } catch (e) {}
+    });
+  });
+
+  var saved = null;
+  try { saved = localStorage.getItem('argus-docs-lang'); } catch (e) {}
+  var initial = saved === 'es' || saved === 'en'
+    ? saved
+    : ((navigator.language || 'en').toLowerCase().indexOf('es') === 0 ? 'es' : 'en');
+  apply(initial);
+  root.classList.add('has-lang');
+
+  // active section in the sidebar
+  var links = Array.prototype.slice.call(document.querySelectorAll('.sidebar a'));
+  var map = {};
+  links.forEach(function (a) {
+    var id = a.getAttribute('href').slice(1);
+    var section = document.getElementById(id);
+    if (section) { map[id] = a; }
+  });
+  if ('IntersectionObserver' in window) {
+    var seen = {};
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) { seen[entry.target.id] = entry.isIntersecting; });
+      var current = null;
+      Object.keys(map).forEach(function (id) { if (seen[id]) { current = id; } });
+      if (current === null) { return; }
+      links.forEach(function (a) { a.classList.remove('active'); });
+      map[current].classList.add('active');
+    }, { rootMargin: '-84px 0px -66% 0px', threshold: 0 });
+    Object.keys(map).forEach(function (id) { observer.observe(document.getElementById(id)); });
+  }
+})();
+</script>
+</body>
+</html>
