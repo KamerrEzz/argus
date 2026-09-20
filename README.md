@@ -17,6 +17,9 @@ spend, and the review policy.
 > Packages keep the `@acr` scope (the project's original working name) and the CLI
 > binary is `acr-review`; the product name is Argus.
 
+> **Documentation:** [`docs/index.html`](docs/index.html) — the same material as
+> this file, in English and Spanish, as one self-contained page with no build step.
+
 ---
 
 ## Contents
