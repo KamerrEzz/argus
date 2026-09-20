@@ -256,19 +256,50 @@ export function createToolHandlers(
       const args = SubmitFindingsInputSchema.parse(rawArgs);
       const accepted: FindingDraft[] = [];
       const rejected: string[] = [];
+      const blockingRejections: string[] = [];
 
       args.findings.forEach((raw, index) => {
         const parsed = FindingDraftSchema.safeParse(raw);
-        if (parsed.success) {
-          accepted.push(parsed.data);
+        if (!parsed.success) {
+          const reasons = parsed.error.issues
+            .slice(0, 4)
+            .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+            .join('; ');
+          rejected.push(`finding ${index + 1}: ${reasons}`);
           return;
         }
-        const reasons = parsed.error.issues
-          .slice(0, 4)
-          .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
-          .join('; ');
-        rejected.push(`finding ${index + 1}: ${reasons}`);
+
+        const finding = parsed.data;
+        // A blocking claim nobody can check is what let a hardcoded credential
+        // leave the report: the finding was real, but a human could not verify
+        // it, so validation dropped it. Require the line the model actually read.
+        const evidence = (finding.evidence ?? '').trim();
+        const blocking =
+          finding.severity === 'critical' ||
+          finding.severity === 'high' ||
+          finding.category === 'security';
+        if (blocking && evidence.length < 8) {
+          const reason =
+            `finding ${index + 1} (${finding.severity}, ${finding.category}): ` +
+            'evidence is required for critical, high and security findings. Quote the exact code or ' +
+            "file:line you read, for example: const CARRIER_API_KEY = 'sk_live_...' (src/shipping.js:4). " +
+            'Add the evidence - do not remove the finding.';
+          rejected.push(reason);
+          blockingRejections.push(reason);
+          return;
+        }
+
+        accepted.push(finding);
       });
+
+      // A blocking finding missing its evidence fails the whole submission, so
+      // the model cannot make the error go away by quietly dropping it.
+      if (blockingRejections.length > 0) {
+        return failure(
+          `Not recorded yet.\n${blockingRejections.join('\n')}\nResubmit every finding, adding the missing evidence.`,
+          { accepted: accepted.length, rejected: rejected.length },
+        );
+      }
 
       if (accepted.length === 0 && rejected.length > 0) {
         return failure(
