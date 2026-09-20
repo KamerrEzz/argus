@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../shared" },
+    { "path": "../config" },
+    { "path": "../database" },
+    { "path": "../github" },
+    { "path": "../sandbox" },
+    { "path": "../queue" },
+    { "path": "../ai" }
+  ]
+}

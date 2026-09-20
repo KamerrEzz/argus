@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/config" },
+    { "path": "../../packages/database" },
+    { "path": "../../packages/github" },
+    { "path": "../../packages/sandbox" },
+    { "path": "../../packages/queue" },
+    { "path": "../../packages/ai" },
+    { "path": "../../packages/pipeline" }
+  ]
+}

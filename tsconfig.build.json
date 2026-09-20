@@ -1,0 +1,16 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/config" },
+    { "path": "packages/shared" },
+    { "path": "packages/database" },
+    { "path": "packages/github" },
+    { "path": "packages/sandbox" },
+    { "path": "packages/queue" },
+    { "path": "packages/ai" },
+    { "path": "packages/pipeline" },
+    { "path": "apps/api" },
+    { "path": "apps/worker" },
+    { "path": "apps/cli" }
+  ]
+}

@@ -1,0 +1,445 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// GitHub numeric identifiers are stored as strings: they are opaque and can
+/// exceed the signed 32-bit range, and strings avoid bigint JSON serialisation
+/// hazards across the API boundary.
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+enum RepositoryPermission {
+  READ
+  TRIAGE
+  WRITE
+  MAINTAIN
+  ADMIN
+}
+
+enum PullRequestState {
+  OPEN
+  CLOSED
+  MERGED
+}
+
+enum ReviewRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  AWAITING_APPROVAL
+}
+
+enum ReviewTrigger {
+  WEBHOOK
+  MANUAL
+  RETRY
+}
+
+enum ReviewVerdict {
+  PASSED
+  NEUTRAL
+  FAILED
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum FindingCategory {
+  BUG
+  SECURITY
+  PERFORMANCE
+  ARCHITECTURE
+  MAINTAINABILITY
+  TESTING
+  STYLE
+}
+
+enum FindingStatus {
+  DRAFT
+  VALIDATED
+  PUBLISHED
+  DISMISSED
+  RESOLVED
+  STALE
+  SUPPRESSED
+}
+
+enum FindingSource {
+  AGENT
+  STATIC_ANALYSIS
+  SECURITY_SCAN
+  TEST_EXECUTION
+  HUMAN
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+  TIMED_OUT
+}
+
+enum ExecutionKind {
+  TEST
+  LINT
+  TYPECHECK
+  BUILD
+  STATIC_ANALYSIS
+  SECURITY_SCAN
+}
+
+enum SandboxKind {
+  DOCKER
+  PROCESS
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole @default(MEMBER)
+  isActive     Boolean  @default(true)
+  tokenVersion Int      @default(0)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  repositoryAccess RepositoryAccess[]
+  approvedRequests ReviewApproval[]   @relation("ApprovalReviewer")
+
+  @@index([isActive])
+}
+
+model Repository {
+  id             String   @id @default(uuid())
+  githubId       String   @unique
+  owner          String
+  name           String
+  fullName       String   @unique
+  installationId String?
+  defaultBranch  String   @default("main")
+  isPrivate      Boolean  @default(true)
+  language       String?
+  isActive       Boolean  @default(true)
+  settings       Json     @default("{}")
+  lastSyncedAt   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  pullRequests  PullRequest[]
+  reviewRuns    ReviewRun[]
+  access        RepositoryAccess[]
+  webhookEvents WebhookEvent[]
+
+  @@index([installationId])
+  @@index([isActive])
+  @@index([owner, name])
+}
+
+model RepositoryAccess {
+  id             String               @id @default(uuid())
+  userId         String
+  repositoryId   String
+  permission     RepositoryPermission @default(READ)
+  grantedAt      DateTime             @default(now())
+  grantedById    String?
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, repositoryId])
+  @@index([repositoryId])
+}
+
+model PullRequest {
+  id           String           @id @default(uuid())
+  githubId     String           @unique
+  repositoryId String
+  number       Int
+  title        String
+  body         String           @default("")
+  author       String
+  state        PullRequestState @default(OPEN)
+  draft        Boolean          @default(false)
+  baseRef      String
+  baseSha      String
+  headRef      String
+  headSha      String
+  additions    Int              @default(0)
+  deletions    Int              @default(0)
+  changedFiles Int              @default(0)
+  url          String
+  labels       Json             @default("[]")
+  openedAt     DateTime         @default(now())
+  mergedAt     DateTime?
+  closedAt     DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  repository   Repository     @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  reviewRuns   ReviewRun[]
+  findings     ReviewFinding[]
+
+  @@unique([repositoryId, number])
+  @@index([repositoryId, state])
+  @@index([headSha])
+  @@index([updatedAt])
+}
+
+model ReviewRun {
+  id              String          @id @default(uuid())
+  repositoryId    String
+  pullRequestId   String
+  status          ReviewRunStatus @default(QUEUED)
+  trigger         ReviewTrigger   @default(WEBHOOK)
+  verdict         ReviewVerdict?
+  headSha         String
+  baseSha         String
+  model           String
+  summary         String?
+  plan            Json?
+  planReasons     Json?
+  changedFiles    Json?
+  diff            String?
+  filesAnalyzed   Int             @default(0)
+  findingsTotal   Int             @default(0)
+  criticalCount   Int             @default(0)
+  highCount       Int             @default(0)
+  mediumCount     Int             @default(0)
+  lowCount        Int             @default(0)
+  infoCount       Int             @default(0)
+  tokensIn        Int             @default(0)
+  tokensOut       Int             @default(0)
+  estimatedCostUsd Decimal        @default(0) @db.Decimal(12, 6)
+  iterations      Int             @default(0)
+  toolCalls       Int             @default(0)
+  idempotencyKey  String          @unique
+  commentId       String?
+  checkRunId      String?
+  error           String?
+  budgetLimit     String?
+  queuedAt        DateTime        @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  publishedAt     DateTime?
+  durationMs      Int?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  repository    Repository          @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  pullRequest   PullRequest         @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+  findings      ReviewFinding[]
+  agentRuns     AgentExecution[]
+  testRuns      TestExecution[]
+  toolRuns      ToolExecution[]
+  nodeRuns      AgentNodeExecution[]
+  approvals     ReviewApproval[]
+
+  @@index([repositoryId, createdAt])
+  @@index([pullRequestId, createdAt])
+  @@index([status, createdAt])
+  @@index([headSha])
+  @@index([trigger])
+}
+
+model ReviewFinding {
+  id                String          @id @default(uuid())
+  reviewRunId       String
+  pullRequestId     String
+  fingerprint       String
+  severity          Severity
+  category          FindingCategory
+  status            FindingStatus   @default(DRAFT)
+  title             String
+  description       String
+  file              String
+  line              Int?
+  endLine           Int?
+  suggestion        String?
+  evidence          String?
+  confidence        Float
+  confidenceBand    String
+  publishable       Boolean         @default(false)
+  source            FindingSource   @default(AGENT)
+  ruleId            String?
+  validationReasons Json            @default("[]")
+  metadata          Json?
+  githubCommentId   String?
+  publishedAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  reviewRun   ReviewRun   @relation(fields: [reviewRunId], references: [id], onDelete: Cascade)
+  pullRequest PullRequest @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewRunId, fingerprint])
+  @@index([pullRequestId, status])
+  @@index([reviewRunId, severity])
+  @@index([fingerprint])
+}
+
+model AgentExecution {
+  id              String        @id @default(uuid())
+  reviewRunId     String
+  graphName       String
+  model           String
+  status          ExecutionStatus @default(RUNNING)
+  currentNode     String?
+  iterations      Int           @default(0)
+  toolCalls       Int           @default(0)
+  tokensIn        Int           @default(0)
+  tokensOut       Int           @default(0)
+  estimatedCostUsd Decimal      @default(0) @db.Decimal(12, 6)
+  error           String?
+  startedAt       DateTime      @default(now())
+  finishedAt      DateTime?
+  durationMs      Int?
+
+  reviewRun ReviewRun             @relation(fields: [reviewRunId], references: [id], onDelete: Cascade)
+  nodes     AgentNodeExecution[]
+  tools     ToolExecution[]
+
+  @@index([reviewRunId, startedAt])
+  @@index([status])
+}
+
+model AgentNodeExecution {
+  id                String          @id @default(uuid())
+  reviewRunId       String
+  agentExecutionId  String
+  node              String
+  attempt           Int             @default(1)
+  status            ExecutionStatus @default(RUNNING)
+  summary           String?
+  inputMetadata     Json?
+  outputMetadata    Json?
+  error             String?
+  startedAt         DateTime        @default(now())
+  finishedAt        DateTime?
+  durationMs        Int?
+
+  reviewRun      ReviewRun      @relation(fields: [reviewRunId], references: [id], onDelete: Cascade)
+  agentExecution AgentExecution @relation(fields: [agentExecutionId], references: [id], onDelete: Cascade)
+
+  @@index([agentExecutionId, startedAt])
+  @@index([reviewRunId, node])
+}
+
+model ToolExecution {
+  id               String          @id @default(uuid())
+  reviewRunId      String
+  agentExecutionId String?
+  tool             String
+  status           ExecutionStatus @default(RUNNING)
+  inputMetadata    Json?
+  outputMetadata   Json?
+  error            String?
+  startedAt        DateTime        @default(now())
+  finishedAt       DateTime?
+  durationMs       Int?
+
+  reviewRun      ReviewRun       @relation(fields: [reviewRunId], references: [id], onDelete: Cascade)
+  agentExecution AgentExecution? @relation(fields: [agentExecutionId], references: [id], onDelete: SetNull)
+
+  @@index([reviewRunId, startedAt])
+  @@index([tool])
+}
+
+model TestExecution {
+  id            String        @id @default(uuid())
+  reviewRunId   String
+  kind          ExecutionKind
+  tool          String
+  command       String
+  status        ExecutionStatus @default(PENDING)
+  exitCode      Int?
+  durationMs    Int           @default(0)
+  stdout        String?
+  stderr        String?
+  timedOut      Boolean       @default(false)
+  sandbox       SandboxKind   @default(DOCKER)
+  image         String?
+  summary       String?
+  details       Json?
+  skippedReason String?
+  createdAt     DateTime      @default(now())
+
+  reviewRun ReviewRun @relation(fields: [reviewRunId], references: [id], onDelete: Cascade)
+
+  @@index([reviewRunId, kind])
+  @@index([status])
+}
+
+model WebhookEvent {
+  id                String             @id @default(uuid())
+  deliveryId        String             @unique
+  event             String
+  action            String?
+  status            WebhookEventStatus @default(RECEIVED)
+  repositoryId      String?
+  repositoryFullName String?
+  installationId    String?
+  pullRequestNumber Int?
+  headSha           String?
+  reviewRunId       String?
+  payloadSummary    Json?
+  error             String?
+  receivedAt        DateTime           @default(now())
+  processedAt       DateTime?
+
+  repository Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+
+  @@index([event, action])
+  @@index([status, receivedAt])
+  @@index([repositoryFullName])
+}
+
+model ReviewApproval {
+  id          String         @id @default(uuid())
+  reviewRunId String
+  action      String
+  status      ApprovalStatus @default(PENDING)
+  payload     Json           @default("{}")
+  requestedAt DateTime       @default(now())
+  decidedAt   DateTime?
+  decidedById String?
+  reason      String?
+
+  reviewRun ReviewRun @relation(fields: [reviewRunId], references: [id], onDelete: Cascade)
+  decidedBy User?     @relation("ApprovalReviewer", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([reviewRunId, status])
+  @@index([status, requestedAt])
+}

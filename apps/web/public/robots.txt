@@ -1,0 +1,4 @@
+# This dashboard is a private developer tool: it holds review data for
+# repositories and must never be indexed.
+User-agent: *
+Disallow: /

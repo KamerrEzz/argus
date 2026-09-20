@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+**/dist
+.next
+.git
+.env
+.env.*
+!.env.example
+coverage
+test-results
+playwright-report
+workspaces
+*.log
+*.pem
+*.key
+.DS_Store
+.codegraph

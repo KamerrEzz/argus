@@ -1,0 +1,27 @@
+{
+  "name": "@acr/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Run a review locally with no server, queue or database writes required",
+  "main": "./dist/index.js",
+  "bin": {
+    "acr-review": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "review": "tsx src/index.ts",
+    "typecheck": "tsc -b --force"
+  },
+  "dependencies": {
+    "@acr/ai": "*",
+    "@acr/config": "*",
+    "@acr/database": "*",
+    "@acr/github": "*",
+    "@acr/pipeline": "*",
+    "@acr/sandbox": "*",
+    "@acr/shared": "*",
+    "zod": "^4.6.5"
+  }
+}
