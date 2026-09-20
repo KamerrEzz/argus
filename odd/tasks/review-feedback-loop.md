@@ -65,7 +65,11 @@ observed directly, not inferred:
   findings`; `packages/github/test/publish-client.unit.test.ts` (request shape,
   including a multi-line range) and 4 pipeline tests (on/off, ids recorded, a
   rejected line does not fail the publish); `npm run verify` 695/695.
-  Live GitHub verification still pending.
+  **Live verification (PR #2 on KamerrEzz/argus-sample, run 2eed6ab8):** before T3,
+  with `publishFindingsAsComments: true`, the PR had 0 inline comments and every
+  finding had `githubCommentId`/`publishedAt` null. After T3 the same setting
+  produced 2 anchored comments (`src/shipping.js:11`, `:10`) and both findings
+  recorded their comment ids (4056173158, 4056173171) and `publishedAt`.
 
 ## Verification
 
