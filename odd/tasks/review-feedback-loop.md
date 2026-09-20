@@ -71,6 +71,21 @@ observed directly, not inferred:
   produced 2 anchored comments (`src/shipping.js:11`, `:10`) and both findings
   recorded their comment ids (4056173158, 4056173171) and `publishedAt`.
 
+- [x] **T4 — A blocking finding is never dropped silently.**
+  Investigation of the PR #2 run: the model produced 5 candidates (`submit_findings`
+  accepted 5, including "Hardcoded carrier API key committed in source"),
+  `validateFinding` kept 2 and discarded 3. The credential candidate was therefore
+  discarded by validation, most plausibly through `missing_evidence` — required for
+  critical/high and for any `security` category. Neither the discarded candidates
+  nor their reasons were recorded anywhere, so the loss was invisible and the
+  pull request read as clean.
+  Fix: `missing_evidence` no longer discards a critical/high or security finding;
+  it keeps it visible and unpublishable, and the validation warning now reports a
+  reason histogram instead of a bare count.
+  Evidence: commit `fix(shared): stop discarding blocking findings without
+  evidence`; `packages/shared/test/findings.unit.test.ts` is a new suite (7 tests —
+  no test covered `validateFinding` before); `npm run verify` 702/702.
+
 ## Verification
 
 - `npm run verify` (lint + typecheck + typecheck:tests + unit/integration/e2e)

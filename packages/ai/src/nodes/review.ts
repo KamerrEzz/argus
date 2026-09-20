@@ -507,6 +507,21 @@ export function createValidateFindingsNode(ports: ReviewGraphPorts): GraphNodeFn
     const kept = outcomes.filter((outcome) => outcome.decision === 'keep');
     const publishable = kept.filter((outcome) => outcome.publishable);
 
+    // "N discarded" without the reasons is not auditable: a review that silently
+    // drops a critical candidate looks identical to a clean one.
+    const discarded = outcomes.filter((outcome) => outcome.decision === 'discard');
+    const reasonCounts = new Map<string, number>();
+    for (const outcome of discarded) {
+      for (const reason of outcome.reasons) {
+        reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+      }
+    }
+    const reasonSummary = [...reasonCounts.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 4)
+      .map(([reason, count]) => `${reason} ×${count}`)
+      .join(', ');
+
     const persisted: readonly PersistedFindingInput[] = kept.map((outcome) => ({
       draft: outcome.finding,
       fingerprint: outcome.fingerprint,
@@ -537,8 +552,10 @@ export function createValidateFindingsNode(ports: ReviewGraphPorts): GraphNodeFn
       validated: outcomes,
       findings: kept.map((outcome) => outcome.finding),
       warnings:
-        outcomes.length - kept.length > 0
-          ? [`${outcomes.length - kept.length} finding(s) discarded during validation`]
+        discarded.length > 0
+          ? [
+              `${discarded.length} finding(s) discarded during validation${reasonSummary.length > 0 ? `: ${reasonSummary}` : ''}`,
+            ]
           : [],
       summary: `${kept.length} validated finding(s), ${publishable.length} publishable`,
     };
