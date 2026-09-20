@@ -20,6 +20,7 @@ import {
   listWebhookEvents,
   recordWebhookEvent,
   requestApproval,
+  seedDatabase,
   setRepositorySettings,
   updateWebhookEvent,
   upsertRepository,
@@ -43,6 +44,51 @@ beforeAll(() => {
 
 afterAll(async () => {
   await disconnectPrismaClient();
+});
+
+describe('seedDatabase idempotency', () => {
+  const FOREIGN_EMAIL = 'seed-adoption-check@example.com';
+
+  it('adopts an account that already owns the admin email instead of failing on it', async () => {
+    const foreignId = randomUUID();
+    await prisma.repositoryAccess.deleteMany({ where: { userId: foreignId } });
+    await prisma.user.deleteMany({ where: { email: FOREIGN_EMAIL } });
+    await prisma.user.create({
+      data: {
+        id: foreignId,
+        email: FOREIGN_EMAIL,
+        name: 'Bootstrap Admin',
+        passwordHash: 'not-a-real-hash',
+        role: 'ADMIN',
+        isActive: true,
+      },
+    });
+
+    try {
+      // Before the fix this threw P2002 on user.email: the seed upserted by its
+      // own fixed id while the API bootstrap had created the same email already.
+      const summary = await seedDatabase(prisma, {
+        adminEmail: FOREIGN_EMAIL,
+        adminPassword: 'seed-password-123',
+        adminName: 'Bootstrap Admin',
+      });
+
+      expect(summary.credentials.email).toBe(FOREIGN_EMAIL);
+      const adopted = await prisma.user.findUnique({ where: { email: FOREIGN_EMAIL } });
+      expect(adopted?.id).toBe(foreignId);
+    } finally {
+      // The run moved the demo access rows onto the stand-in account; seeding
+      // with the default email puts them back before the stand-in is removed.
+      await seedDatabase(prisma).catch(() => undefined);
+      await prisma.repositoryAccess.deleteMany({ where: { userId: foreignId } });
+      await prisma.user.deleteMany({ where: { id: foreignId } });
+    }
+  });
+
+  it('runs twice in a row without throwing', async () => {
+    await expect(seedDatabase(prisma)).resolves.toBeDefined();
+    await expect(seedDatabase(prisma)).resolves.toBeDefined();
+  });
 });
 
 describe('Prisma client', () => {

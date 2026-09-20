@@ -226,7 +226,11 @@ function fakeContainer(options: FakeContainerOptions = {}): ApplicationContainer
     config: options.config ?? testConfig(),
     logger: fakeLogger(),
     prisma: options.prisma ?? {},
-    persistence: options.persistence ?? {},
+    persistence: {
+      markReviewPublished: vi.fn().mockResolvedValue(undefined),
+      markFindingsPublished: vi.fn().mockResolvedValue(undefined),
+      ...(options.persistence ?? {}),
+    },
     github: { read: {}, publish, auth: { resolveToken: vi.fn() } },
     events: options.events ?? fakeEvents(),
     queue: options.queue === undefined ? null : options.queue,
@@ -881,5 +885,40 @@ describe('inline findings', () => {
     expect(markFindingsPublished).toHaveBeenCalledWith('run-77', [
       { fingerprint: artifacts.inline[0]?.fingerprint, commentId: null },
     ]);
+  });
+});
+
+describe('published refs recorded on the run', () => {
+  it('stores the GitHub ids the publish created, not only the urls', async () => {
+    const markReviewPublished = vi.fn().mockResolvedValue(undefined);
+    const container = fakeContainer({ persistence: { markReviewPublished } });
+
+    await publishArtifacts(container, artifactsFixture(container));
+
+    expect(markReviewPublished).toHaveBeenCalledWith('run-77', { commentId: 101, checkRunId: 202 });
+  });
+
+  it('records nulls when the summary comment fails but the check run lands', async () => {
+    const publish = fakePublishPort();
+    publish.findSummaryComment.mockRejectedValueOnce(new Error('403 forbidden'));
+    const markReviewPublished = vi.fn().mockResolvedValue(undefined);
+    const container = fakeContainer({ publish, persistence: { markReviewPublished } });
+
+    await publishArtifacts(container, artifactsFixture(container));
+
+    expect(markReviewPublished).toHaveBeenCalledWith('run-77', { commentId: null, checkRunId: 202 });
+  });
+
+  it('records nothing when publishing is switched off entirely', async () => {
+    const markReviewPublished = vi.fn().mockResolvedValue(undefined);
+    const container = fakeContainer({
+      persistence: { markReviewPublished },
+      config: testConfig({ features: { publishEnabled: false } }),
+    });
+
+    const refs = await publishArtifacts(container, artifactsFixture(container));
+
+    expect(refs.skippedReason).toBe('publishing_disabled');
+    expect(markReviewPublished).not.toHaveBeenCalled();
   });
 });
