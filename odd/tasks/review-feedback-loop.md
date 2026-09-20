@@ -148,7 +148,52 @@ observed directly, not inferred:
   migrate` applies migrations inside the container; `npm run clean -w @acr/shared`
   followed by `npm run build:backend` succeeds.
 
+- [x] **T10 — the full stack runs in containers.** Bringing `docker compose up -d`
+  up exposed four defects the host test suite cannot see:
+  1. The web image failed to build: `next build` ran with `NODE_ENV=development`,
+     so prerendering `/_global-error` threw `Cannot read properties of null
+     (reading 'useContext')`. The build stage now switches to production for the
+     build step while keeping development for `npm ci`.
+  2. The api and worker images exited on start: `LOG_PRETTY=true` — the value
+     `.env.example` shipped — made pino load `pino-pretty`, a devDependency the
+     production image prunes. The logger now falls back to JSON and says so, and
+     the example defaults to false.
+  3. The web container could not find its server: `COPY .next/standalone /repo`
+     copies the *contents*, so the server lands at `apps/web/server.js`, not at the
+     nested path the CMD used.
+  4. The worker image was stale from before the `.dockerignore` fix (T9), so it
+     carried no `dist`; rebuilding every image resolved it.
+  Evidence: `docker compose build` succeeds for every image; with all five
+  containers up the API answers `/health` with database, redis, git and llm ok,
+  the web serves 200 for `/login`, and the worker reports healthy on its own
+  endpoint with `checks: queued`.
+
+- [x] **T11 — the container deploy can reach GitHub.** Compose passed
+  `GITHUB_PRIVATE_KEY` only, so a deployment that keeps the key in a file — the
+  README's recommended shape, and what a local `.env` typically uses — reached the
+  container with no credential at all and every review failed with "Repository has
+  no GitHub App installation and GITHUB_TOKEN is not configured".
+  Evidence: `GITHUB_PRIVATE_KEY_PATH` is passed through and the PEM mount is
+  documented beside the api and worker volumes.
+  **Deploy checklist item, not a code defect:** `NODE_ENV` is substituted from the
+  host `.env` (`${NODE_ENV:-production}`), so a container run inherits
+  `development` unless the deployment sets it explicitly — and the production
+  invariant checks only run when it is `production`. Set `NODE_ENV=production` in
+  the deploy environment.
+
 ## Verification
 
 - `npm run verify` (lint + typecheck + typecheck:tests + unit/integration/e2e)
 - Targeted: `npx vitest run --project unit packages/pipeline packages/github packages/database`
+
+## Operational note: the suite and a live stack share Redis
+
+The e2e suite drives a review in-process against the same `DATABASE_URL` and
+`REDIS_URL` the containers use. With a worker consuming that Redis — for example
+after `docker compose up -d` — an old `QUEUED` run for the test's own repository
+can be re-dispatched by the reconciler and hold the pull-request lock, so the
+test's review comes back `status: 'skipped'` with
+`skippedReason: 'already_running'`. That is the reconciler doing its job against a
+dirty development database, not a product defect: stop the app containers
+(`docker compose stop api worker web`) before running the suite, or give the tests
+their own Redis.

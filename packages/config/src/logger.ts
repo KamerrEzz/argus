@@ -53,15 +53,32 @@ export function createLogger(input: LoggerInput): Logger {
     timestamp: pino.stdTimeFunctions.isoTime,
   };
   if (input.pretty === true) {
-    return pino({
-      ...options,
-      transport: {
-        target: 'pino-pretty',
-        options: { colorize: true, translateTime: 'SYS:HH:MM:ss.l', ignore: 'pid,hostname' },
-      },
-    });
+    if (canResolve('pino-pretty')) {
+      return pino({
+        ...options,
+        transport: {
+          target: 'pino-pretty',
+          options: { colorize: true, translateTime: 'SYS:HH:MM:ss.l', ignore: 'pid,hostname' },
+        },
+      });
+    }
+    // A log formatter is a preference, not a reason to refuse to boot: the
+    // production image prunes devDependencies, so carrying LOG_PRETTY=true over
+    // from a local .env used to crash the process on startup.
+    process.stderr.write(
+      'LOG_PRETTY is enabled but pino-pretty is not installed; writing JSON logs instead\n',
+    );
   }
   return pino(options);
+}
+
+function canResolve(moduleName: string): boolean {
+  try {
+    require.resolve(moduleName);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 let rootLogger: Logger | null = null;
