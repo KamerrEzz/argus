@@ -185,3 +185,15 @@ observed directly, not inferred:
 
 - `npm run verify` (lint + typecheck + typecheck:tests + unit/integration/e2e)
 - Targeted: `npx vitest run --project unit packages/pipeline packages/github packages/database`
+
+## Operational note: the suite and a live stack share Redis
+
+The e2e suite drives a review in-process against the same `DATABASE_URL` and
+`REDIS_URL` the containers use. With a worker consuming that Redis — for example
+after `docker compose up -d` — an old `QUEUED` run for the test's own repository
+can be re-dispatched by the reconciler and hold the pull-request lock, so the
+test's review comes back `status: 'skipped'` with
+`skippedReason: 'already_running'`. That is the reconciler doing its job against a
+dirty development database, not a product defect: stop the app containers
+(`docker compose stop api worker web`) before running the suite, or give the tests
+their own Redis.
