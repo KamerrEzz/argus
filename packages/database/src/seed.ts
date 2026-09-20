@@ -121,12 +121,28 @@ export async function seedDatabase(prisma: PrismaClient, options: SeedOptions = 
 
   const passwordHash = await hashPassword(adminPassword);
   const reviewerHash = await hashPassword('reviewer-password');
+  const reviewerEmail = 'reviewer@example.com';
+
+  // The API's bootstrap may have created this account already, with an id of its
+  // own. Seeded rows are keyed by id, so adopt whatever id the email carries
+  // instead of failing on the unique email. The password is left alone on update:
+  // reseeding never invalidates a real account's credentials.
+  const existingAdmin = await prisma.user.findUnique({
+    where: { email: adminEmail },
+    select: { id: true },
+  });
+  const adminId = existingAdmin?.id ?? IDS.admin;
+  const existingReviewer = await prisma.user.findUnique({
+    where: { email: reviewerEmail },
+    select: { id: true },
+  });
+  const reviewerId = existingReviewer?.id ?? IDS.reviewer;
 
   await prisma.user.upsert({
-    where: { id: IDS.admin },
+    where: { id: adminId },
     update: { email: adminEmail, name: adminName, role: 'ADMIN', isActive: true },
     create: {
-      id: IDS.admin,
+      id: adminId,
       email: adminEmail,
       name: adminName,
       role: 'ADMIN',
@@ -136,11 +152,11 @@ export async function seedDatabase(prisma: PrismaClient, options: SeedOptions = 
   });
 
   await prisma.user.upsert({
-    where: { id: IDS.reviewer },
-    update: { email: 'reviewer@example.com', name: 'Reviewer', role: 'MEMBER', isActive: true },
+    where: { id: reviewerId },
+    update: { email: reviewerEmail, name: 'Reviewer', role: 'MEMBER', isActive: true },
     create: {
-      id: IDS.reviewer,
-      email: 'reviewer@example.com',
+      id: reviewerId,
+      email: reviewerEmail,
       name: 'Reviewer',
       role: 'MEMBER',
       passwordHash: reviewerHash,
@@ -192,19 +208,19 @@ export async function seedDatabase(prisma: PrismaClient, options: SeedOptions = 
   });
 
   await prisma.repositoryAccess.upsert({
-    where: { userId_repositoryId: { userId: IDS.admin, repositoryId: apiRepository.id } },
+    where: { userId_repositoryId: { userId: adminId, repositoryId: apiRepository.id } },
     update: { permission: 'ADMIN' },
-    create: { userId: IDS.admin, repositoryId: apiRepository.id, permission: 'ADMIN', grantedById: IDS.admin },
+    create: { userId: adminId, repositoryId: apiRepository.id, permission: 'ADMIN', grantedById: adminId },
   });
   await prisma.repositoryAccess.upsert({
-    where: { userId_repositoryId: { userId: IDS.admin, repositoryId: webRepository.id } },
+    where: { userId_repositoryId: { userId: adminId, repositoryId: webRepository.id } },
     update: { permission: 'ADMIN' },
-    create: { userId: IDS.admin, repositoryId: webRepository.id, permission: 'ADMIN', grantedById: IDS.admin },
+    create: { userId: adminId, repositoryId: webRepository.id, permission: 'ADMIN', grantedById: adminId },
   });
   await prisma.repositoryAccess.upsert({
-    where: { userId_repositoryId: { userId: IDS.reviewer, repositoryId: apiRepository.id } },
+    where: { userId_repositoryId: { userId: reviewerId, repositoryId: apiRepository.id } },
     update: { permission: 'READ' },
-    create: { userId: IDS.reviewer, repositoryId: apiRepository.id, permission: 'READ', grantedById: IDS.admin },
+    create: { userId: reviewerId, repositoryId: apiRepository.id, permission: 'READ', grantedById: adminId },
   });
 
   const sqlPr = await prisma.pullRequest.upsert({

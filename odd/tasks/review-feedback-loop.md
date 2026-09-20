@@ -110,6 +110,31 @@ observed directly, not inferred:
   findings`; `packages/ai/test/submit-findings.unit.test.ts` (5 tests);
   `npm run verify` 707/707.
 
+- [x] **T6 — The run records the GitHub artefacts it created.**
+  `markReviewPublished` was implemented and had no callers, so `ReviewRun.commentId`
+  and `checkRunId` stayed null and nothing tied a run to its comment or check run.
+  `publishArtifacts` now keeps the ids it gets back and records them, null when an
+  artefact was skipped or failed, and records nothing when publishing is switched
+  off.
+  Evidence: commit; 3 tests; `npm run verify`.
+
+- [x] **T7 — `db:seed` is idempotent after the API bootstrap.**
+  The seed upserted the admin by its fixed id while the API bootstrap creates the
+  same email with an id of its own, so `npm run db:seed` failed with P2002 on
+  `user.email`. The seed now adopts the id the email already carries and points its
+  access rows at it; the password is deliberately left alone on update, so
+  reseeding never invalidates a real account's credentials.
+  Evidence: commit; integration test in
+  `packages/database/test/database.integration.test.ts`; verified live by inserting
+  an admin with a foreign id and seeding twice — both succeed and the row keeps its
+  id.
+
+- [x] **T8 — the loop closes end to end.** With the sample PR's code fixed
+  (`argus-sample` PR #2), the review went from `failed` with the credential
+  published inline to `neutral`: the blocking findings are gone, the check run went
+  from `failure` to `neutral`, and the comment's progress section reported the
+  earlier findings as not raised again.
+
 ## Verification
 
 - `npm run verify` (lint + typecheck + typecheck:tests + unit/integration/e2e)

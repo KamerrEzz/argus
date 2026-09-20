@@ -817,6 +817,11 @@ export async function publishArtifacts(
     return { ...result, skippedReason: 'publishing_disabled' };
   }
 
+  // The ids, not only the urls: the run row is what the dashboard and any audit
+  // read back to answer "which GitHub artefacts did this publish create".
+  let commentId: number | null = null;
+  let checkRunId: number | null = null;
+
   if (artifacts.createComment) {
     try {
       const existing = await container.github.publish.findSummaryComment({
@@ -836,6 +841,7 @@ export async function publishArtifacts(
               body: artifacts.comment,
             });
       result.commentUrl = ref.url;
+      commentId = ref.id;
       logger.info({ reviewRunId, commentUrl: ref.url }, 'review comment published');
     } catch (error) {
       logger.error({ reviewRunId, error: describe(error) }, 'could not publish the summary comment');
@@ -897,10 +903,17 @@ export async function publishArtifacts(
         detailsUrl: dashboardUrl(container, reviewRunId),
       });
       result.checkRunUrl = ref.url;
+      checkRunId = ref.id;
     } catch (error) {
       logger.error({ reviewRunId, error: describe(error) }, 'could not publish the check run');
     }
   }
+
+  await container.persistence
+    .markReviewPublished(reviewRunId, { commentId, checkRunId })
+    .catch((error: unknown) =>
+      logger.warn({ reviewRunId, error: describe(error) }, 'could not record the published refs'),
+    );
 
   return result;
 }
