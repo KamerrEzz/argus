@@ -1,0 +1,80 @@
+name: Feature request
+description: Propose a capability the project does not have yet.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to propose something.
+
+        Please describe **the problem before the solution**. A clear problem can
+        have several good answers; a proposed answer without its problem is hard
+        to evaluate.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation as it is today and why it is a problem.
+      placeholder: Right now, when I … I have to …, which means …
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you would like the project to do. If it touches the data model, the API or the UI, say which.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Anything you already tried or ruled out, and why it was not enough.
+      placeholder: I could keep doing … by hand, but it stops working when …
+    validations:
+      required: false
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Who does this help, and how do you know?
+      description: A concrete user of the project — not "everyone". Real usage beats a hypothetical.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Rough scope
+      description: A guess is fine. It helps decide whether this needs a design pass.
+      options:
+        - Small - a self-contained change
+        - Medium - touches one package or app
+        - Large - touches the data model, the API and the UI
+        - Unknown - needs investigation
+      multiple: false
+    validations:
+      required: true
+
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the repository this lands in, if you know.
+      placeholder: packages/database, apps/api, apps/web, docs …
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: Existing issues were searched and this is not a duplicate.
+          required: true
+        - label: This is a proposal, not a bug report.
+          required: true
