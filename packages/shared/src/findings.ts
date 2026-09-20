@@ -79,6 +79,10 @@ export interface PriorFindingReference {
   readonly fingerprint: string;
   readonly status: FindingStatus;
   readonly severity: Severity;
+  /** Optional display fields, so a report can name a carried-over finding. */
+  readonly title?: string;
+  readonly file?: string;
+  readonly line?: number | null;
 }
 
 const GENERIC_TITLE_PATTERNS: readonly string[] = [

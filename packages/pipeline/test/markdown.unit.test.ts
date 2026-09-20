@@ -14,6 +14,7 @@ import type {
   CheckExecutionRecord,
   FindingDraft,
   FindingValidationOutcome,
+  PriorFindingReference,
 } from '@acr/shared';
 import {
   REVIEW_COMMENT_MARKER,
@@ -135,6 +136,77 @@ function countOccurrences(haystack: string, needle: string): number {
 function fenceCount(markdown: string): number {
   return (markdown.match(/^ {0,3}```/gm) ?? []).length;
 }
+
+// ---------------------------------------------------------------------------
+
+describe('renderReviewComment progress since the previous review', () => {
+  function earlier(over: Partial<PriorFindingReference> = {}): PriorFindingReference {
+    return {
+      fingerprint: 'fp-earlier',
+      status: 'published',
+      severity: 'critical',
+      title: 'Hardcoded payments API key',
+      file: 'src/pricing.js',
+      line: 4,
+      ...over,
+    };
+  }
+
+  it('omits the section when the pull request has no earlier findings', () => {
+    expect(render()).not.toContain('Progress since the previous review');
+  });
+
+  it('says an earlier finding is still reported when this run raises it again', () => {
+    const finding = draft({ severity: 'critical', title: 'Hardcoded payments API key' });
+    const validated = outcomeFor(finding);
+
+    const body = render({
+      outcome: baseOutcome({ validated: [validated], findings: [finding] }),
+      previousFindings: [earlier({ fingerprint: validated.fingerprint })],
+    });
+
+    expect(body).toContain('### Progress since the previous review');
+    expect(body).toContain('**0 new** — reported for the first time by this run');
+    expect(body).toContain('**1 still reported** — raised again by this run');
+    expect(body).not.toContain('were not raised again');
+  });
+
+  it('names findings this run did not raise again instead of silently dropping them', () => {
+    const body = render({
+      previousFindings: [
+        earlier({ fingerprint: 'fp-key', severity: 'critical', title: 'Hardcoded payments API key' }),
+        earlier({ fingerprint: 'fp-sqli', severity: 'high', title: 'SQL built by concatenation' }),
+        earlier({
+          fingerprint: 'fp-loose',
+          severity: 'low',
+          title: 'Loose equality on payment status',
+          file: 'src/status.js',
+          line: null,
+        }),
+      ],
+    });
+
+    expect(body).toContain('**3 from earlier runs were not raised again**, including 2 critical/high');
+    expect(body).toContain('check them before merging');
+    // The reader can see which findings are outstanding, not just how many.
+    expect(body).toContain('Hardcoded payments API key — `src/pricing.js:4`');
+    expect(body).toContain('SQL built by concatenation');
+    expect(body).toContain('Loose equality on payment status — `src/status.js`');
+  });
+
+  it('counts a finding raised for the first time as new', () => {
+    const finding = draft({ title: 'Fresh issue on this diff' });
+    const validated = outcomeFor(finding);
+
+    const body = render({
+      outcome: baseOutcome({ validated: [validated], findings: [finding] }),
+      previousFindings: [earlier({ fingerprint: 'fp-unrelated', severity: 'medium' })],
+    });
+
+    expect(body).toContain('**1 new** — reported for the first time by this run');
+    expect(body).toContain('**1 from earlier runs were not raised again**');
+  });
+});
 
 // ---------------------------------------------------------------------------
 

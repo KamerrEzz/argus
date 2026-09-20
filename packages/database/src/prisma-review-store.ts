@@ -320,12 +320,22 @@ export class PrismaReviewStore implements ReviewPersistencePort {
         },
         orderBy: { createdAt: 'desc' },
         distinct: ['fingerprint'],
-        select: { fingerprint: true, status: true, severity: true },
+        select: {
+          fingerprint: true,
+          status: true,
+          severity: true,
+          title: true,
+          file: true,
+          line: true,
+        },
       });
       return rows.map((row) => ({
         fingerprint: row.fingerprint,
         status: fromDbFindingStatus(row.status),
         severity: fromDbSeverity(row.severity),
+        title: row.title,
+        file: row.file,
+        line: row.line,
       }));
     });
   }

@@ -1,0 +1,65 @@
+# Feature: review feedback loop
+
+Objective: make Argus's reviews produce a trustworthy, closed feedback loop —
+the PR comment must communicate progress across runs, a run must never be
+silently orphaned in the queue, and the `Inline findings` setting the dashboard
+offers must actually work.
+
+Authorized scope: `packages/pipeline`, `packages/shared`, `packages/github`,
+`packages/database`, `apps/worker`, and their tests. No architectural changes:
+the graph nodes, ports and queue topology stay as they are.
+
+## Problem and why it matters
+
+An end-to-end run on a real pull request exposed three defects. All three were
+observed directly, not inferred:
+
+1. **The summary comment hides progress.** `renderReviewComment` renders one
+   run's outcome and the published comment is replaced in place, while
+   `compareWithPreviousFindings` marks earlier findings `publishable: false`.
+   A re-review therefore replaces a comment that listed 2 critical findings with
+   one that lists 3 low-severity notes, and the criticals vanish from the PR
+   while still unfixed. The reviewer reads "no criticals" and merges.
+2. **A run can be orphaned in `QUEUED`.** A `ReviewRun` row was created but no
+   BullMQ job existed (`wait`/`active`/`delayed` all zero). There is no reaper,
+   sweep or reconciliation, so it stays `QUEUED` forever and the dashboard
+   counts it as pending work.
+3. **`publishFindingsAsComments` is dead configuration.** The dashboard toggle
+   promises "Publish each finding as an inline comment"; no code reads the flag
+   and `GithubPublishClient` has no inline review-comment method, so the promise
+   is impossible to keep.
+
+## Constraints
+
+- The model still never decides what is safe: policy, budget and publishing
+  remain computed from configuration and repository settings.
+- No new dependencies, no sandbox/queue/permission topology changes.
+- Every behaviour change ships with a regression test.
+
+## Tasks
+
+- [x] **T1 — Summary communicates progress across runs.**
+  Render resolved / still-open / new counts in the summary comment by passing the
+  previous findings into the render context. Acceptance: a re-review comment
+  states what is resolved and what is still open, and never drops a previously
+  reported finding without saying so. Tests: `packages/pipeline/test/markdown.unit.test.ts`.
+  Evidence: commit `fix(pipeline): report review progress across runs`; 4 new
+  markdown tests; `npm run verify` 685/685.
+
+- [ ] **T2 — No run stays orphaned in QUEUED.**
+  Reconcile runs whose row is `QUEUED` past a threshold with no job in the queue,
+  re-enqueueing them once. Acceptance: a `QUEUED` run older than the threshold is
+  dispatched on worker start; a healthy run is untouched. Tests: pipeline/queue
+  unit tests. Evidence: commit.
+
+- [ ] **T3 — Inline findings actually publish.**
+  Add an inline review-comment capability to the publish port/client and wire it
+  to `publishFindingsAsComments`, recording the created comment id per finding.
+  Acceptance: with the setting on, publishable findings produce inline comments
+  on the changed lines; with it off, nothing inline is posted. Tests: publish
+  port + client unit tests. Evidence: commit.
+
+## Verification
+
+- `npm run verify` (lint + typecheck + typecheck:tests + unit/integration/e2e)
+- Targeted: `npx vitest run --project unit packages/pipeline packages/github packages/database`

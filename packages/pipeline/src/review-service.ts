@@ -2,6 +2,7 @@ import {
   AppError,
   ConflictError,
   summarizeFindings,
+  type PriorFindingReference,
   type RepoWorkspace,
   type RepositoryRef,
   type RepositorySettings,
@@ -304,6 +305,7 @@ async function runLockedReview(
   let workspace: RepoWorkspace | null = null;
   let outcome: ReviewOutcome | null = null;
   let failure: Error | null = null;
+  let previousFindings: readonly PriorFindingReference[] = [];
 
   try {
     const token = await container.github.auth.resolveToken(repository.installationId);
@@ -317,7 +319,7 @@ async function runLockedReview(
     });
 
     const catalog = await buildScriptCatalog(workspace);
-    const previousFindings = await persistence.loadPreviousFindings(
+    previousFindings = await persistence.loadPreviousFindings(
       target.pullRequestId,
       reviewRunId,
     );
@@ -369,6 +371,7 @@ async function runLockedReview(
       durationMs,
       startedAt,
       options,
+      previousFindings,
     });
     Object.assign(published, finished);
     return toResult(reviewRunId, outcome, published, null, durationMs);
@@ -436,6 +439,8 @@ interface FinishInput {
   readonly durationMs: number;
   readonly startedAt: number;
   readonly options: ExecuteReviewOptions;
+  /** Findings from earlier runs on this pull request, for the progress section. */
+  readonly previousFindings: readonly PriorFindingReference[];
 }
 
 async function finishAndPublish(
@@ -509,6 +514,7 @@ async function finishAndPublish(
       model: container.config.llm.model,
       durationMs,
       dashboardUrl: dashboardUrl(container, target.reviewRunId),
+      previousFindings: input.previousFindings,
     },
   });
 

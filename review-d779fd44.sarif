@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "AI Code Review & QA Agent",
+          "informationUri": "https://github.com/acme/ai-code-review",
+          "version": "deepseek-v4-flash",
+          "rules": [
+            {
+              "id": "acr/bug",
+              "shortDescription": {
+                "text": "applyDiscount returns negative zero for a zero total"
+              },
+              "properties": {
+                "tags": [
+                  "bug",
+                  "agent"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "acr/bug",
+          "level": "note",
+          "message": {
+            "text": "applyDiscount returns negative zero for a zero total\n\n`Math.sign(total) * Math.round(discounted)` returns `-0` when `total` is `-0` (or any negative total whose discounted magnitude rounds to 0, e.g. `applyDiscount(-0, 10)`): `Number.isSafeInteger(-0)` is true, `Math.abs(-0)` is `0`, and `Math.sign(-0)` is `-0`, so `-0 * 0 === -0`. The documented contract says the result is an integer amount in the smallest currency unit, and `-0` is observable to callers that use `Object.is`/`assert.strictEqual` or `1 / result === -Infinity`, and it will not compare equal to `0` under those checks. Fix by normalising the sign, e.g. `const magnitude = Math.round(Math.abs(total) * (1 - discountPercent / 100)); return total < 0 ? -magnitude : magnitude;` (which also yields `0` rather than `-0`). No test in test/pricing.test.js covers a zero or `-0` total, so this is currently unguarded."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/pricing.js"
+                },
+                "region": {
+                  "startLine": 30
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "low",
+            "confidence": 0.85,
+            "status": "validated",
+            "source": "agent",
+            "reviewRunId": "d779fd44-1179-44c5-b6c3-5e06268e5060"
+          }
+        }
+      ],
+      "originalUriBaseIds": {
+        "REPO_ROOT": {
+          "uri": "https://github.com/KamerrEzz/argus-sample/tree/ebfde15a6fce8efff3bbf4b691385a9082d4dd9b/"
+        }
+      },
+      "columnKind": "utf16CodeUnits"
+    }
+  ]
+}
