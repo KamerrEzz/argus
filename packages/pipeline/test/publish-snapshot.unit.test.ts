@@ -173,6 +173,15 @@ function fakePublishPort() {
         createdAt: '2026-01-01T00:00:00Z',
       }),
     ),
+    createReviewComment: vi.fn(
+      async (input: { path: string; line: number; body: string }) => ({
+        id: 500 + input.line,
+        url: `https://github.com/acme/widgets/pull/7#discussion_r${500 + input.line}`,
+        body: input.body,
+        author: 'acr-bot',
+        createdAt: '2026-01-01T00:00:00Z',
+      }),
+    ),
     createCheckRun: vi.fn(
       async (_input: {
         repository: RepositoryRef;
@@ -205,6 +214,7 @@ function fakeEvents() {
 interface FakeContainerOptions {
   readonly config?: AppConfig;
   readonly prisma?: Record<string, unknown>;
+  readonly persistence?: Record<string, unknown>;
   readonly publish?: ReturnType<typeof fakePublishPort>;
   readonly events?: ReturnType<typeof fakeEvents>;
   readonly queue?: Record<string, unknown> | null;
@@ -216,7 +226,7 @@ function fakeContainer(options: FakeContainerOptions = {}): ApplicationContainer
     config: options.config ?? testConfig(),
     logger: fakeLogger(),
     prisma: options.prisma ?? {},
-    persistence: {},
+    persistence: options.persistence ?? {},
     github: { read: {}, publish, auth: { resolveToken: vi.fn() } },
     events: options.events ?? fakeEvents(),
     queue: options.queue === undefined ? null : options.queue,
@@ -808,5 +818,68 @@ describe('reconcileStaleReviews', () => {
       requeued: 0,
       alive: 0,
     });
+  });
+});
+
+describe('inline findings', () => {
+  function withInlineSetting(publishFindingsAsComments: boolean) {
+    const publish = fakePublishPort();
+    const markFindingsPublished = vi.fn().mockResolvedValue(undefined);
+    const container = fakeContainer({ publish, persistence: { markFindingsPublished } });
+    const artifacts = buildPublishArtifacts(container, {
+      repository: REPO_A,
+      pullRequestNumber: 7,
+      headSha: 'a'.repeat(40),
+      settings: RepositorySettingsSchema.parse({ publishFindingsAsComments }),
+      renderContext: renderContext(),
+    });
+    return { container, publish, markFindingsPublished, artifacts };
+  }
+
+  it('anchors one comment per publishable finding when the setting is on', () => {
+    const { artifacts } = withInlineSetting(true);
+
+    expect(artifacts.createInlineComments).toBe(true);
+    // The suppressed finding (confidence 0.5) must not be anchored.
+    expect(artifacts.inline).toHaveLength(1);
+    expect(artifacts.inline[0]).toMatchObject({
+      path: 'src/pay/refund.ts',
+      line: 42,
+      startLine: null,
+    });
+    expect(artifacts.inline[0]?.body).toContain('Refund path double-charges on retry');
+  });
+
+  it('is the setting the thing that decides, so off means nothing inline', () => {
+    const { artifacts } = withInlineSetting(false);
+
+    expect(artifacts.createInlineComments).toBe(false);
+    expect(artifacts.inline).toEqual([]);
+  });
+
+  it('publishes the inline comments and records the comment id per fingerprint', async () => {
+    const { container, publish, markFindingsPublished, artifacts } = withInlineSetting(true);
+
+    await publishArtifacts(container, artifacts);
+
+    expect(publish.createReviewComment).toHaveBeenCalledTimes(1);
+    expect(publish.createReviewComment).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'src/pay/refund.ts', line: 42, commitId: 'a'.repeat(40) }),
+    );
+    expect(markFindingsPublished).toHaveBeenCalledWith('run-77', [
+      { fingerprint: artifacts.inline[0]?.fingerprint, commentId: 542 },
+    ]);
+  });
+
+  it('keeps the rest of the publish working when one inline comment is rejected', async () => {
+    const { container, publish, markFindingsPublished, artifacts } = withInlineSetting(true);
+    publish.createReviewComment.mockRejectedValueOnce(new Error('422 line must be part of the diff'));
+
+    const refs = await publishArtifacts(container, artifacts);
+
+    expect(refs.commentUrl).toContain('#issuecomment-101');
+    expect(markFindingsPublished).toHaveBeenCalledWith('run-77', [
+      { fingerprint: artifacts.inline[0]?.fingerprint, commentId: null },
+    ]);
   });
 });

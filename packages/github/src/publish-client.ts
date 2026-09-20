@@ -84,6 +84,39 @@ export class GithubPublishClient implements GithubPublishPort {
     return toReviewComment(payload);
   }
 
+  /**
+   * One inline comment on a line of the pull request diff. The response is a
+   * review-comment object with the same fields the issue-comment schema checks.
+   */
+  async createReviewComment(input: {
+    readonly repository: RepositoryRef;
+    readonly pullRequestNumber: number;
+    readonly commitId: string;
+    readonly path: string;
+    readonly line: number;
+    readonly startLine: number | null;
+    readonly body: string;
+  }): Promise<ReviewCommentRef> {
+    const token = await this.options.resolveToken(input.repository.installationId);
+    const payload = await this.options.http.request({
+      method: 'POST',
+      path: `${this.repoPath(input.repository)}/pulls/${input.pullRequestNumber}/comments`,
+      token,
+      body: {
+        body: input.body,
+        commit_id: input.commitId,
+        path: input.path,
+        line: input.line,
+        side: 'RIGHT',
+        ...(input.startLine === null
+          ? {}
+          : { start_line: input.startLine, start_side: 'RIGHT' }),
+      },
+      schema: GithubIssueCommentSchema,
+    });
+    return toReviewComment(payload);
+  }
+
   async createCheckRun(input: {
     readonly repository: RepositoryRef;
     readonly headSha: string;

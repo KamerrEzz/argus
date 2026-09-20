@@ -206,6 +206,7 @@ describe('end-to-end review', () => {
 
   const publishedComments: { readonly body: string }[] = [];
   const publishedChecks: { readonly conclusion: string; readonly title: string }[] = [];
+  const publishedInline: { readonly path: string; readonly line: number; readonly body: string }[] = [];
 
   beforeAll(async () => {
     // Fresh config (no shared cache): process sandbox, inline checks, real Postgres.
@@ -336,6 +337,20 @@ describe('end-to-end review', () => {
         return Promise.resolve({
           id: 71000,
           url: 'https://github.com/e2e-org/e2e-repo/pull/1#e2e',
+          body: input.body,
+          author: 'e2e-bot',
+          createdAt: new Date().toISOString(),
+        });
+      },
+      createReviewComment: (input: {
+        readonly path: string;
+        readonly line: number;
+        readonly body: string;
+      }): Promise<ReviewCommentRef> => {
+        publishedInline.push({ path: input.path, line: input.line, body: input.body });
+        return Promise.resolve({
+          id: 73000 + publishedInline.length,
+          url: `https://github.com/e2e-org/e2e-repo/pull/1#inline-${input.path}-${input.line}`,
           body: input.body,
           author: 'e2e-bot',
           createdAt: new Date().toISOString(),

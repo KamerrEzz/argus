@@ -56,12 +56,16 @@ observed directly, not inferred:
   Supporting fix: `deduplicationId` is not a BullMQ option (BullMQ reads
   `deduplication.id`), so review jobs were never actually deduplicated.
 
-- [ ] **T3 — Inline findings actually publish.**
+- [x] **T3 — Inline findings actually publish.**
   Add an inline review-comment capability to the publish port/client and wire it
   to `publishFindingsAsComments`, recording the created comment id per finding.
   Acceptance: with the setting on, publishable findings produce inline comments
   on the changed lines; with it off, nothing inline is posted. Tests: publish
-  port + client unit tests. Evidence: commit.
+  port + client unit tests. Evidence: commit `feat(pipeline): publish inline
+  findings`; `packages/github/test/publish-client.unit.test.ts` (request shape,
+  including a multi-line range) and 4 pipeline tests (on/off, ids recorded, a
+  rejected line does not fail the publish); `npm run verify` 695/695.
+  Live GitHub verification still pending.
 
 ## Verification
 
